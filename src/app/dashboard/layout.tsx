@@ -31,7 +31,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSeparator,
+  SidebarSeparator,
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
@@ -83,7 +83,7 @@ export default function DashboardLayout({
             ))}
           </SidebarMenu>
         </SidebarContent>
-        <SidebarMenuSeparator />
+        <SidebarSeparator />
          <div className="p-4">
             <Button variant="outline" className="w-full group-data-[collapsible=icon]:hidden" onClick={() => router.push('/')}>
               <LogOut className="mr-2 h-4 w-4" />
