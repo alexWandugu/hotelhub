@@ -1,0 +1,22 @@
+{
+  "name": "Hotel Hub",
+  "short_name": "HotelHub",
+  "description": "A PWA for managing hotel outgoing orders and orders from hotel partners.",
+  "icons": [
+    {
+      "src": "/icons/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#3F51B5",
+  "background_color": "#E8EAF6",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait"
+}

@@ -1,0 +1,130 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import {
+  AreaChart,
+  Bot,
+  Building2,
+  Handshake,
+  LogOut,
+  Settings,
+  Sidebar as SidebarIcon,
+  Users,
+} from 'lucide-react';
+
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSeparator,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar';
+import { Logo } from '@/components/logo';
+
+const navItems = [
+  { href: '/dashboard', icon: AreaChart, label: 'Dashboard' },
+  { href: '/dashboard/transactions', icon: Handshake, label: 'Transactions' },
+  { href: '/dashboard/ai-report', icon: Bot, label: 'AI Report' },
+  { href: '/dashboard/partners', icon: Building2, label: 'Partners' },
+  { href: '/dashboard/clients', icon: Users, label: 'Clients' },
+  { href: '/dashboard/users', icon: Settings, label: 'Manage Users' },
+];
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  return (
+    <SidebarProvider>
+      <Sidebar variant="sidebar" collapsible="icon">
+        <SidebarHeader className="p-4">
+          <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
+             <Building2 className="h-7 w-7 text-primary" />
+             <h2 className="text-xl font-bold font-headline">Hotel Hub</h2>
+          </div>
+           <div className="hidden items-center gap-2 group-data-[collapsible=icon]:flex">
+             <Building2 className="h-7 w-7 text-primary" />
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarMenu>
+            {navItems.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <Link href={item.href}>
+                  <SidebarMenuButton
+                    isActive={pathname === item.href}
+                    tooltip={{ children: item.label }}
+                  >
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </Link>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarContent>
+        <SidebarMenuSeparator />
+         <div className="p-4">
+            <Button variant="outline" className="w-full group-data-[collapsible=icon]:hidden" onClick={() => router.push('/')}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </Button>
+            <Button variant="ghost" size="icon" className="hidden w-full group-data-[collapsible=icon]:flex" onClick={() => router.push('/')}>
+              <LogOut className="h-4 w-4" />
+            </Button>
+         </div>
+      </Sidebar>
+      <SidebarInset>
+        <header className="flex h-16 items-center justify-between border-b bg-card px-4 md:justify-end">
+          <SidebarTrigger className="md:hidden" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                <Avatar className="h-9 w-9">
+                  <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="@shadcn" />
+                  <AvatarFallback>AD</AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end" forceMount>
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">Admin</p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    admin@hotelhub.com
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push('/')}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
