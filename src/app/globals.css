@@ -92,30 +92,30 @@ body {
     background-color: white !important;
   }
 
-  /* 1. Hide main layout chrome */
+  /* 1. Hide main layout chrome and UI controls */
   header, [data-sidebar], .print-hide {
     display: none !important;
   }
+  
   main {
     padding: 0 !important;
   }
 
-  /* 2. When printing is active, hide all report cards by default */
-  body[data-printing] [data-reports-ui] {
-      display: none !important;
+  /* 2. Hide the report card that is NOT being printed */
+  body[data-printing="debt"] #print-area-periods-card {
+    display: none !important;
+  }
+  body[data-printing="periods"] #print-area-debt-card {
+    display: none !important;
   }
 
-  /* 3. Then, show ONLY the card we want to print */
-  body[data-printing="debt"] #print-area-debt-card,
-  body[data-printing="periods"] #print-area-periods-card {
-      display: block !important;
-      border: none !important;
-      box-shadow: none !important;
+  /* 3. Reset styles for the card that IS being printed */
+  [data-reports-ui] {
+    border: none !important;
+    box-shadow: none !important;
   }
   
-  /* 4. Remove padding from CardContent when printing */
-  #print-area-debt-card > div[class*="p-"],
-  #print-area-periods-card > div[class*="p-"] {
+  [data-reports-ui] > div {
     padding: 0 !important;
   }
 

@@ -118,7 +118,10 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
 
     const handlePrint = (report: 'debt' | 'periods') => {
         document.body.setAttribute('data-printing', report);
-        window.print();
+        // Use a short timeout to allow the DOM to update before triggering the print dialog
+        setTimeout(() => {
+            window.print();
+        }, 100);
     };
 
     return (
