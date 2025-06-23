@@ -58,8 +58,9 @@ import { Badge } from '@/components/ui/badge';
 import { Building2, PlusCircle, MoreHorizontal, Pencil, Trash2, AlertTriangle, Loader2, HandCoins } from 'lucide-react';
 
 
-type SerializablePartner = Omit<Partner, 'createdAt'> & {
+type SerializablePartner = Omit<Partner, 'createdAt' | 'lastPeriodStartedAt'> & {
     createdAt: string;
+    lastPeriodStartedAt?: string;
 };
 type SerializableClient = Omit<Client, 'createdAt' | 'periodAllowance'> & {
     createdAt: string;
@@ -340,7 +341,7 @@ export function PartnersClient({ initialPartners, initialClients, hotelId }: Par
                     <AlertDialogHeader>
                         <AlertDialogTitle>Start a New Billing Period?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will reset the utilized amounts and debts for all clients of <span className="font-bold">{selectedPartner?.name}</span> and issue the new period's allowance. Any outstanding debt from the previous period will be deducted from the new allowance. This action cannot be undone.
+                            This will reset the utilized amounts for all clients of <span className="font-bold">{selectedPartner?.name}</span> and issue the new period's allowance. Any outstanding debt from the previous period will be deducted from the new allowance. This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

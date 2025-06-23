@@ -52,6 +52,9 @@ export default async function PartnersPage({ params }: { params: { hotelId: stri
   const partners = partnersData.map(partner => ({
     ...partner,
     createdAt: partner.createdAt.toDate().toISOString(),
+    lastPeriodStartedAt: partner.lastPeriodStartedAt
+      ? partner.lastPeriodStartedAt.toDate().toISOString()
+      : undefined,
   }));
   
   const clients = clientsData.map(client => ({
