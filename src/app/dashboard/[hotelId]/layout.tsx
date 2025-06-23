@@ -81,7 +81,7 @@ export default function DashboardLayout({
             
             if (!isAllowed) {
               router.replace(`/dashboard/${params.hotelId}/new-transaction`);
-              setIsAuthorized(true); // Authorize to prevent hang, then redirect
+              // Do not authorize yet, let the redirect complete and the effect run again.
               return; 
             }
           }
