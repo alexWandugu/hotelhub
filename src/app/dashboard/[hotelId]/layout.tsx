@@ -53,6 +53,7 @@ export default function DashboardLayout({
   const [user, authLoading] = useAuthState(auth);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [userRole, setUserRole] = useState<HotelUser['role'] | null>(null);
+  const [hotelName, setHotelName] = useState<string>('');
 
   useEffect(() => {
     if (authLoading) return;
@@ -62,12 +63,30 @@ export default function DashboardLayout({
       return;
     }
 
-    const checkAuthorization = async () => {
+    const checkAuthorizationAndFetchData = async () => {
       if (!params.hotelId || !user.uid) return;
 
       try {
+        // Fetch hotel and user data in parallel
+        const hotelDocRef = doc(db, 'hotels', params.hotelId);
         const userDocRef = doc(db, 'hotels', params.hotelId, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+        
+        const [hotelDoc, userDoc] = await Promise.all([
+            getDoc(hotelDocRef),
+            getDoc(userDocRef)
+        ]);
+
+        if (!hotelDoc.exists()) {
+          toast({
+              variant: 'destructive',
+              title: 'Hotel Not Found',
+              description: "The hotel you're trying to access does not exist.",
+          });
+          router.replace('/hotel-selection');
+          return;
+        }
+        
+        setHotelName(hotelDoc.data().name);
 
         if (userDoc.exists() && userDoc.data().status === 'active') {
           const role = userDoc.data().role as HotelUser['role'];
@@ -106,7 +125,7 @@ export default function DashboardLayout({
       }
     };
 
-    checkAuthorization();
+    checkAuthorizationAndFetchData();
   }, [user, authLoading, params.hotelId, router, toast, pathname]);
 
   const adminNavItems = [
@@ -154,7 +173,10 @@ export default function DashboardLayout({
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
             <Building2 className="h-7 w-7 text-primary" />
-            <h2 className="text-xl font-bold font-headline">Hotel Hub</h2>
+            <div className="flex flex-col">
+              <h2 className="text-xl font-bold font-headline leading-tight">Hotel Hub</h2>
+              {hotelName && <p className="text-xs text-sidebar-foreground/80 truncate">{hotelName}</p>}
+            </div>
           </div>
           <div className="hidden items-center gap-2 group-data-[collapsible=icon]:flex">
             <Building2 className="h-7 w-7 text-primary" />
