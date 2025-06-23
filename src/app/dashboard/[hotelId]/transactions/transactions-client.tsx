@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useActionState } from 'react';
+import { useState, useEffect, useRef, useActionState, useMemo } from 'react';
 import { useFormStatus } from 'react-dom';
 import { addTransaction } from '@/lib/actions';
 import type { Transaction } from '@/lib/types';
@@ -36,6 +36,7 @@ interface ClientForDropdown {
   id: string;
   name: string;
   partnerName: string;
+  partnerId: string;
   availableAllowance: number;
 }
 interface TransactionsClientProps {
@@ -57,6 +58,8 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
+
 
     const addTransactionWithHotelId = addTransaction.bind(null, hotelId);
     const [state, dispatch] = useActionState(addTransactionWithHotelId, { errors: null, message: null });
@@ -69,6 +72,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                 toast({ title: 'Success!', description: state.message });
                 setDialogOpen(false);
                 formRef.current?.reset();
+                setSelectedPartnerId(null);
             }
         }
     }, [state, toast]);
@@ -81,6 +85,24 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
         }).format(amount);
     };
 
+     // Get unique partners from the clients list
+    const partners = useMemo(() => {
+        const partnerMap = new Map<string, { id: string; name: string }>();
+        clients.forEach(client => {
+            if (!partnerMap.has(client.partnerId)) {
+                partnerMap.set(client.partnerId, { id: client.partnerId, name: client.partnerName });
+            }
+        });
+        return Array.from(partnerMap.values());
+    }, [clients]);
+
+    // Filter clients based on selected partner
+    const filteredClients = useMemo(() => {
+        if (!selectedPartnerId) return [];
+        return clients.filter(client => client.partnerId === selectedPartnerId);
+    }, [clients, selectedPartnerId]);
+
+
     return (
         <>
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -90,7 +112,12 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                     View and manage all client transactions.
                     </p>
                 </div>
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <Dialog open={dialogOpen} onOpenChange={(isOpen) => {
+                    setDialogOpen(isOpen);
+                    if (!isOpen) {
+                        setSelectedPartnerId(null);
+                    }
+                }}>
                     <DialogTrigger asChild>
                         <Button className="w-full sm:w-auto" disabled={clients.length === 0}>
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -114,16 +141,36 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                     </Alert>
                                 )}
                                 <div className="space-y-2">
-                                    <Label htmlFor="client">Client</Label>
-                                    <Select name="client" required>
-                                        <SelectTrigger id="client">
-                                            <SelectValue placeholder="Select a client" />
+                                    <Label htmlFor="receiptNo">Receipt No.</Label>
+                                    <Input id="receiptNo" name="receiptNo" required />
+                                    {state?.errors?.receiptNo && <p className="text-sm text-destructive">{state.errors.receiptNo[0]}</p>}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="partner">Company</Label>
+                                    <Select name="partner" required onValueChange={setSelectedPartnerId}>
+                                        <SelectTrigger id="partner">
+                                            <SelectValue placeholder="Select a company" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {clients.map(client => (
+                                            {partners.map(partner => (
+                                                <SelectItem key={partner.id} value={partner.id}>
+                                                    {partner.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="client">Client</Label>
+                                    <Select name="client" required disabled={!selectedPartnerId}>
+                                        <SelectTrigger id="client">
+                                            <SelectValue placeholder={!selectedPartnerId ? "Select a company first" : "Select a client"} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {filteredClients.map(client => (
                                                 <SelectItem key={client.id} value={client.id}>
                                                     <div className="flex justify-between w-full">
-                                                        <span>{client.name} <span className="text-muted-foreground text-xs">({client.partnerName})</span></span>
+                                                        <span>{client.name}</span>
                                                         <span className="font-mono text-xs">{formatCurrency(client.availableAllowance)}</span>
                                                     </div>
                                                 </SelectItem>

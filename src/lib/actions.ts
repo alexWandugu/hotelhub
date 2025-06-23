@@ -306,6 +306,7 @@ export async function deleteClient(hotelId: string, clientId: string) {
 const TransactionSchema = z.object({
   client: z.string().min(1, { message: "You must select a client." }),
   amount: z.coerce.number().positive({ message: "Amount must be greater than zero." }),
+  receiptNo: z.string().min(1, { message: "Receipt number is required." }),
 });
 
 export async function addTransaction(hotelId: string, prevState: any, formData: FormData) {
@@ -317,6 +318,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   const validatedFields = TransactionSchema.safeParse({
     client: formData.get('client'),
     amount: formData.get('amount'),
+    receiptNo: formData.get('receiptNo'),
   });
 
   if (!validatedFields.success) {
@@ -326,7 +328,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     };
   }
 
-  const { client: clientId, amount } = validatedFields.data;
+  const { client: clientId, amount, receiptNo } = validatedFields.data;
 
   try {
     await runTransaction(db, async (transaction) => {
@@ -354,6 +356,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         status: transactionStatus,
         createdAt: serverTimestamp(),
         recordedBy: user.email || 'N/A',
+        receiptNo: receiptNo,
       });
     });
     

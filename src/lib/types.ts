@@ -38,4 +38,5 @@ export type Transaction = {
   status: 'completed' | 'flagged' | 'pending';
   createdAt: Timestamp;
   recordedBy: string; // user email
+  receiptNo: string;
 }

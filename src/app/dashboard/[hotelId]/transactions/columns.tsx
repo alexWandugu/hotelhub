@@ -35,7 +35,7 @@ const ActionCell = ({ row }: { row: any }) => {
         try {
             await deleteTransaction(params.hotelId, transaction.id);
             toast({ title: "Transaction Deleted", description: "The transaction and its associated debt have been removed." });
-        } catch (error: any) {
+        } catch (error: any) => {
             toast({ variant: "destructive", title: "Deletion Failed", description: error.message });
         }
     };
@@ -68,6 +68,10 @@ const ActionCell = ({ row }: { row: any }) => {
 }
 
 export const columns: ColumnDef<Transaction & { createdAt: string }>[] = [
+  {
+    accessorKey: "receiptNo",
+    header: "Receipt No."
+  },
   {
     accessorKey: "clientName",
     header: ({ column }) => (
