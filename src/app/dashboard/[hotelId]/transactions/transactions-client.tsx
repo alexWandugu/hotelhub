@@ -7,6 +7,7 @@ import type { Transaction } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { DataTable } from './data-table';
 import { columns } from './columns';
+import { cn } from '@/lib/utils';
 
 // UI Imports
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
