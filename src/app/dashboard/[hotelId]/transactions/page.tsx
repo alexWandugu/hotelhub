@@ -55,8 +55,9 @@ export default async function TransactionsPage({ params }: { params: { hotelId: 
       name: c.name,
       partnerName: c.partnerName,
       partnerId: c.partnerId,
-      allowance: c.allowance,
-      debt: c.debt
+      periodAllowance: Number(c.periodAllowance || 0),
+      utilizedAmount: Number(c.utilizedAmount || 0),
+      debt: Number(c.debt || 0),
   }));
 
   return (

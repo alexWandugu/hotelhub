@@ -309,7 +309,7 @@ export function ClientsClient({
                                                     <TableHeader>
                                                         <TableRow>
                                                             <TableHead>Client Name</TableHead>
-                                                            <TableHead>Available Allowance</TableHead>
+                                                            <TableHead>Available Balance</TableHead>
                                                             <TableHead className="text-right">Debt</TableHead>
                                                             <TableHead>Date Added</TableHead>
                                                             <TableHead className="text-right">Actions</TableHead>
@@ -319,7 +319,7 @@ export function ClientsClient({
                                                         {partner.clients.map((client) => (
                                                             <TableRow key={client.id}>
                                                                 <TableCell className="font-medium">{client.name}</TableCell>
-                                                                <TableCell className="font-mono">{formatCurrency(client.allowance - client.debt)}</TableCell>
+                                                                <TableCell className="font-mono">{formatCurrency(client.periodAllowance - client.utilizedAmount)}</TableCell>
                                                                 <TableCell className="text-right font-mono text-destructive">{formatCurrency(client.debt)}</TableCell>
                                                                 <TableCell>{formatDate(client.createdAt)}</TableCell>
                                                                 <TableCell className="text-right">

@@ -61,8 +61,11 @@ import { Building2, PlusCircle, MoreHorizontal, Pencil, Trash2, AlertTriangle, L
 type SerializablePartner = Omit<Partner, 'createdAt'> & {
     createdAt: string;
 };
-type SerializableClient = Omit<Client, 'createdAt'> & {
+type SerializableClient = Omit<Client, 'createdAt' | 'periodAllowance'> & {
     createdAt: string;
+    periodAllowance: number;
+    utilizedAmount: number;
+    debt: number;
 };
 
 interface PartnersClientProps {
@@ -175,7 +178,7 @@ export function PartnersClient({ initialPartners, initialClients, hotelId }: Par
     const getConsumedAmount = (partnerId: string) => {
         const consumed = initialClients
             .filter(c => c.partnerId === partnerId)
-            .reduce((sum, c) => sum + (c.debt || 0), 0);
+            .reduce((sum, c) => sum + (c.utilizedAmount || 0), 0);
         return consumed;
     }
 
@@ -337,7 +340,7 @@ export function PartnersClient({ initialPartners, initialClients, hotelId }: Par
                     <AlertDialogHeader>
                         <AlertDialogTitle>Start a New Billing Period?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will reset the debts for all clients of <span className="font-bold">{selectedPartner?.name}</span> and add the new period's allowance. This action cannot be undone.
+                            This will reset the utilized amounts and debts for all clients of <span className="font-bold">{selectedPartner?.name}</span> and issue the new period's allowance. Any outstanding debt from the previous period will be deducted from the new allowance. This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

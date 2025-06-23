@@ -136,11 +136,12 @@ export async function updatePartner(hotelId: string, partnerId: string, prevStat
 
             transaction.update(partnerRef, { name, sponsoredEmployeesCount, totalSharedAmount });
             
-            const newAllowance = sponsoredEmployeesCount > 0 ? totalSharedAmount / sponsoredEmployeesCount : 0;
+            const newPeriodAllowance = sponsoredEmployeesCount > 0 ? totalSharedAmount / sponsoredEmployeesCount : 0;
             
             clientsSnapshot.docs.forEach(clientDoc => {
                 const clientRef = doc(db, `hotels/${hotelId}/clients`, clientDoc.id);
-                transaction.update(clientRef, { allowance: newAllowance, partnerName: name });
+                // Note: This updates the allowance mid-period. It does not reset consumption.
+                transaction.update(clientRef, { periodAllowance: newPeriodAllowance, partnerName: name });
             });
         });
         
@@ -244,15 +245,16 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
       };
     }
     
-    const allowance = partnerData.sponsoredEmployeesCount > 0 ? partnerData.totalSharedAmount / partnerData.sponsoredEmployeesCount : 0;
+    const periodAllowance = partnerData.sponsoredEmployeesCount > 0 ? partnerData.totalSharedAmount / partnerData.sponsoredEmployeesCount : 0;
 
     await addDoc(collection(db, 'hotels', hotelId, 'clients'), {
       name: validatedFields.data.name,
       partnerId,
       partnerName,
-      allowance: allowance,
-      status: 'active',
+      periodAllowance: periodAllowance,
+      utilizedAmount: 0,
       debt: 0,
+      status: 'active',
       createdAt: serverTimestamp(),
     });
 
@@ -349,19 +351,21 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
 
       const clientData = clientSnap.data() as Client;
       
-      const allowance = Number(clientData.allowance || 0);
-      const debt = Number(clientData.debt || 0);
-      const availableAllowance = allowance - debt;
-
-      if (amount > availableAllowance) {
-        const formattedAmount = new Intl.NumberFormat('en-KE', {style: 'currency', currency: 'KES'}).format(amount);
-        const formattedAllowance = new Intl.NumberFormat('en-KE', {style: 'currency', currency: 'KES'}).format(availableAllowance);
-        throw new Error(`Transaction amount (${formattedAmount}) exceeds available allowance (${formattedAllowance}).`);
+      const currentDebt = Number(clientData.debt || 0);
+      if (currentDebt > 0) {
+          throw new Error("This client has an outstanding debt and cannot make new transactions until the next period begins.");
       }
 
-      const newTotalDebt = debt + amount;
+      const periodAllowance = Number(clientData.periodAllowance || 0);
+      const utilizedAmount = Number(clientData.utilizedAmount || 0);
+
+      const newUtilizedAmount = utilizedAmount + amount;
+      const newDebt = newUtilizedAmount > periodAllowance ? newUtilizedAmount - periodAllowance : 0;
       
-      transaction.update(clientRef, { debt: newTotalDebt });
+      transaction.update(clientRef, { 
+        utilizedAmount: newUtilizedAmount,
+        debt: newDebt,
+      });
       
       const newTransactionRef = doc(collection(db, `hotels/${hotelId}/transactions`));
       transaction.set(newTransactionRef, {
@@ -420,9 +424,18 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
 
             if (clientSnap.exists()) {
                 const clientData = clientSnap.data() as Client;
+                const utilized = Number(clientData.utilizedAmount || 0);
                 const debt = Number(clientData.debt || 0);
-                const newDebt = debt - transactionData.amount;
-                transaction.update(clientRef, { debt: newDebt < 0 ? 0 : newDebt });
+                
+                const newUtilized = utilized - transactionData.amount;
+                
+                // Recalculate debt based on the new utilized amount
+                const newDebt = newUtilized > clientData.periodAllowance ? newUtilized - clientData.periodAllowance : 0;
+
+                transaction.update(clientRef, { 
+                  utilizedAmount: newUtilized < 0 ? 0 : newUtilized,
+                  debt: newDebt < 0 ? 0 : newDebt
+                });
             }
 
             transaction.delete(transactionRef);
@@ -457,35 +470,33 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
                  throw new Error("Partner has no sponsored employees to start a new period for.");
             }
 
-            const newPeriodAllowance = totalSharedAmount / sponsoredEmployeesCount;
+            const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
             
             const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where("partnerId", "==", partnerId));
             const clientsSnapshot = await getDocs(clientsQuery);
 
             if (clientsSnapshot.empty) {
-                // No clients, nothing to do. This is not an error.
-                return;
+                return; // Not an error, just no clients to update.
             }
 
             clientsSnapshot.forEach(clientDoc => {
                 const clientRef = clientDoc.ref;
                 const clientData = clientDoc.data() as Client;
 
-                const currentAllowance = Number(clientData.allowance || 0);
-                const currentDebt = Number(clientData.debt || 0);
-                
-                const remainingAllowance = currentAllowance - currentDebt;
-                const newTotalAllowance = remainingAllowance + newPeriodAllowance;
+                const previousDebt = Number(clientData.debt || 0);
+                const newTotalAllowanceForPeriod = newPeriodBaseAllowance - previousDebt;
 
                 transaction.update(clientRef, {
-                    allowance: newTotalAllowance,
-                    debt: 0
+                    periodAllowance: newTotalAllowanceForPeriod < 0 ? 0 : newTotalAllowanceForPeriod,
+                    utilizedAmount: 0,
+                    debt: 0,
                 });
             });
         });
 
         revalidatePath(`/dashboard/${hotelId}/partners`);
         revalidatePath(`/dashboard/${hotelId}/clients`);
+        revalidatePath(`/dashboard/${hotelId}/transactions`);
     } catch (error: any) {
         console.error("Error starting new period:", error);
         throw new Error(`Failed to start new period: ${error.message}`);

@@ -44,7 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { PlusCircle, AlertTriangle, Loader2, ChevronsUpDown, Check } from 'lucide-react';
+import { PlusCircle, AlertTriangle, Loader2, ChevronsUpDown, Check, ShieldBan } from 'lucide-react';
 
 // Type Definitions
 type SerializableTransaction = Omit<Transaction, 'createdAt'> & { createdAt: string };
@@ -53,7 +53,8 @@ interface ClientForDropdown {
   name: string;
   partnerName: string;
   partnerId: string;
-  allowance: number;
+  periodAllowance: number;
+  utilizedAmount: number;
   debt: number;
 }
 interface TransactionsClientProps {
@@ -113,23 +114,20 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     // Derived data for UI logic
     const selectedClient = useMemo(() => clients.find(c => c.id === selectedClientId), [clients, selectedClientId]);
     
-    const currentDebt = useMemo(() => {
-        if (!selectedClient) return 0;
-        return Number(selectedClient.debt || 0);
+    const hasDebt = useMemo(() => {
+        if (!selectedClient) return false;
+        return (selectedClient.debt || 0) > 0;
     }, [selectedClient]);
 
-    const availableAllowance = useMemo(() => {
+    const availableBalance = useMemo(() => {
         if (!selectedClient) return 0;
-        const allowance = Number(selectedClient.allowance || 0);
-        const debt = Number(selectedClient.debt || 0);
-        return allowance - debt;
+        const allowance = Number(selectedClient.periodAllowance || 0);
+        const utilized = Number(selectedClient.utilizedAmount || 0);
+        return allowance - utilized;
     }, [selectedClient]);
 
-    const numericAmount = parseFloat(transactionAmount) || 0;
+    const isButtonDisabled = !selectedClientId || (parseFloat(transactionAmount) || 0) <= 0 || hasDebt;
     
-    const isAmountInvalid = numericAmount > availableAllowance;
-    const isButtonDisabled = !selectedClientId || numericAmount <= 0 || isAmountInvalid;
-
     // Get unique partners from the clients list
     const partners = useMemo(() => {
         const partnerMap = new Map<string, { id: string; name: string }>();
@@ -160,7 +158,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
         setComboboxOpen(false);
     }
     
-    const isAmountDisabled = !selectedClientId;
+    const isAmountDisabled = !selectedClientId || hasDebt;
 
     return (
         <>
@@ -177,11 +175,6 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                         setSelectedPartnerId('');
                         setSelectedClientId('');
                         setTransactionAmount('');
-                        // Clear any previous form errors when closing
-                        if (state.errors) {
-                            // This is a way to reset the action state, though not officially supported.
-                            // A better approach might involve a separate reset action if needed.
-                        }
                     }
                 }}>
                     <DialogTrigger asChild>
@@ -241,7 +234,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                                                 <Check className={cn("mr-2 h-4 w-4", selectedClientId === client.id ? "opacity-100" : "opacity-0")} />
                                                                 <div className="flex justify-between w-full">
                                                                     <span>{client.name}</span>
-                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency((Number(client.allowance) || 0) - (Number(client.debt) || 0))}</span>
+                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency((client.periodAllowance || 0) - (client.utilizedAmount || 0))}</span>
                                                                 </div>
                                                             </CommandItem>
                                                         ))}
@@ -255,11 +248,19 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                 
                                 {selectedClient && (
                                      <div className="text-xs text-muted-foreground space-y-1 rounded-md bg-muted p-2">
-                                        <p><strong>Current Debt:</strong> {formatCurrency(currentDebt)}</p>
-                                        <p><strong>Available Allowance:</strong> {formatCurrency(availableAllowance)}</p>
+                                        <p><strong>Available Balance:</strong> {formatCurrency(availableBalance)}</p>
+                                        <p className={cn(hasDebt && "text-destructive font-bold")}><strong>Current Debt:</strong> {formatCurrency(selectedClient.debt || 0)}</p>
                                     </div>
                                 )}
                                 
+                                {hasDebt && (
+                                    <Alert variant="destructive">
+                                        <ShieldBan className="h-4 w-4" />
+                                        <AlertTitle>Transactions Blocked</AlertTitle>
+                                        <AlertDescription>This client has an outstanding debt and cannot make new transactions.</AlertDescription>
+                                    </Alert>
+                                )}
+
                                 <div className="space-y-2">
                                     <Label htmlFor="amount">Amount (KES)</Label>
                                     <Input id="amount" name="amount" type="number" placeholder="0.00" step="0.01" required min="0" 
@@ -269,14 +270,6 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                     />
                                     {state?.errors?.amount && <p className="text-sm text-destructive">{state.errors.amount[0]}</p>}
                                 </div>
-
-                                {isAmountInvalid && (
-                                    <Alert variant="destructive">
-                                        <AlertTriangle className="h-4 w-4" />
-                                        <AlertTitle>Allowance Limit Exceeded</AlertTitle>
-                                        <AlertDescription>The transaction amount exceeds the client's available allowance of {formatCurrency(availableAllowance)}.</AlertDescription>
-                                    </Alert>
-                                )}
 
                                 <DialogFooter className="pt-4">
                                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>

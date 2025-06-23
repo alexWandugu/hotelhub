@@ -52,6 +52,10 @@ export default async function ClientsPage({ params }: { params: { hotelId: strin
   const serializedClients = clientsData.map(client => ({
     ...client,
     createdAt: client.createdAt.toDate().toISOString(),
+    // Ensure numeric values for calculations
+    periodAllowance: Number(client.periodAllowance || 0),
+    utilizedAmount: Number(client.utilizedAmount || 0),
+    debt: Number(client.debt || 0),
   }));
 
   const serializedPartners = partnersData.map(partner => ({

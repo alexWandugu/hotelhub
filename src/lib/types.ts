@@ -23,7 +23,8 @@ export type Client = {
   name: string;
   partnerId: string;
   partnerName: string;
-  allowance: number;
+  periodAllowance: number;
+  utilizedAmount: number;
   debt: number;
   status: 'active' | 'suspended';
   createdAt: Timestamp;
@@ -33,6 +34,7 @@ export type Transaction = {
   id: string;
   clientId: string;
   clientName: string;
+  partnerId: string;
   partnerName: string;
   amount: number;
   status: 'completed' | 'flagged' | 'pending';
