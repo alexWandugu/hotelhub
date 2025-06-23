@@ -117,7 +117,7 @@ export async function updatePartner(hotelId: string, partnerId: string, prevStat
     }
 
     if (!hotelId || !partnerId) {
-        return { errors: null, message: "An unexpected error occurred: ID is missing." };
+        return { errors: { _form: ["An unexpected error occurred: ID is missing."] }, message: "Update Failed." };
     }
     
     const { name, sponsoredEmployeesCount, totalSharedAmount } = validatedFields.data;
@@ -234,7 +234,7 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
       };
     }
     
-    const allowance = partnerData.totalSharedAmount / partnerData.sponsoredEmployeesCount;
+    const allowance = partnerData.sponsoredEmployeesCount > 0 ? partnerData.totalSharedAmount / partnerData.sponsoredEmployeesCount : 0;
 
     await addDoc(collection(db, 'hotels', hotelId, 'clients'), {
       name: validatedFields.data.name,
@@ -249,6 +249,53 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
     return { errors: null, message: 'Client added successfully!' };
   } catch (error) {
     console.error('Error adding client:', error);
-    return { errors: null, message: `Database Error: Failed to add client.` };
+    return { errors: { _form: ['Database Error: Failed to add client.'] }, message: `Failed to add client.` };
   }
+}
+
+const UpdateClientSchema = z.object({
+  name: z.string().min(2, { message: "Client name must be at least 2 characters." }),
+});
+
+export async function updateClient(hotelId: string, clientId: string, prevState: any, formData: FormData) {
+  const validatedFields = UpdateClientSchema.safeParse({
+    name: formData.get('name'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Validation failed. Please check the form.",
+    };
+  }
+
+  if (!hotelId || !clientId) {
+    return { errors: { _form: ["An unexpected error occurred: ID is missing."] }, message: "Update failed." };
+  }
+
+  try {
+    const clientRef = doc(db, 'hotels', hotelId, 'clients', clientId);
+    await updateDoc(clientRef, { name: validatedFields.data.name });
+
+    revalidatePath(`/dashboard/${hotelId}/clients`);
+    return { errors: null, message: 'Client name updated successfully!' };
+  } catch (error) {
+    return { errors: { _form: ["Database Error: Failed to update client."] }, message: `Update failed.` };
+  }
+}
+
+export async function deleteClient(hotelId: string, clientId: string) {
+    if (!hotelId || !clientId) {
+        throw new Error('Invalid arguments provided for deletion.');
+    }
+
+    try {
+        const clientRef = doc(db, 'hotels', hotelId, 'clients', clientId);
+        await deleteDoc(clientRef);
+        
+        revalidatePath(`/dashboard/${hotelId}/clients`);
+    } catch (error: any) {
+        console.error("Error deleting client:", error);
+        throw new Error(`Failed to delete client: ${error.message}`);
+    }
 }
