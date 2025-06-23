@@ -91,6 +91,14 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
         return format(date, 'PPP');
     };
 
+    const formatCurrency = (amount: number) => {
+        if (typeof amount !== 'number') return 'N/A';
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+        }).format(amount);
+    };
+
     return (
         <Card>
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -105,7 +113,7 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                             New Partner
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
+                    <DialogContent className="sm:max-w-md">
                         <DialogHeader>
                             <DialogTitle>Add New Partner</DialogTitle>
                             <DialogDescription>
@@ -119,6 +127,20 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                                 </Label>
                                 <Input id="name" name="name" className="col-span-3" required />
                                 {state?.errors?.name && <p className="col-span-4 text-sm text-destructive text-right -mt-2">{state.errors.name[0]}</p>}
+                            </div>
+                             <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="sponsoredEmployeesCount" className="text-right text-sm">
+                                    Employees
+                                </Label>
+                                <Input id="sponsoredEmployeesCount" name="sponsoredEmployeesCount" type="number" placeholder="0" className="col-span-3" required min="0" />
+                                {state?.errors?.sponsoredEmployeesCount && <p className="col-span-4 text-sm text-destructive text-right -mt-2">{state.errors.sponsoredEmployeesCount[0]}</p>}
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="totalSharedAmount" className="text-right text-sm">
+                                    Shared Amount
+                                </Label>
+                                <Input id="totalSharedAmount" name="totalSharedAmount" type="number" placeholder="0.00" step="0.01" className="col-span-3" required min="0" />
+                                {state?.errors?.totalSharedAmount && <p className="col-span-4 text-sm text-destructive text-right -mt-2">{state.errors.totalSharedAmount[0]}</p>}
                             </div>
                             <DialogFooter>
                                 <DialogClose asChild>
@@ -138,6 +160,8 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                                 <TableRow>
                                     <TableHead>Partner Name</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead className="text-center">Employees</TableHead>
+                                    <TableHead className="text-right">Shared Amount</TableHead>
                                     <TableHead>Date Joined</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -150,6 +174,8 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                                                 {partner.status}
                                             </Badge>
                                         </TableCell>
+                                        <TableCell className="text-center">{partner.sponsoredEmployeesCount}</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(partner.totalSharedAmount)}</TableCell>
                                         <TableCell>{formatDate(partner.createdAt)}</TableCell>
                                     </TableRow>
                                 ))}

@@ -64,11 +64,15 @@ export async function manageUserStatus(
 
 const AddPartnerSchema = z.object({
   name: z.string().min(2, { message: "Partner name must be at least 2 characters." }),
+  sponsoredEmployeesCount: z.coerce.number().int().min(0, "Sponsored employees must be a positive number."),
+  totalSharedAmount: z.coerce.number().min(0, "Shared amount must be a positive number."),
 });
 
 export async function addPartner(hotelId: string, prevState: any, formData: FormData) {
   const validatedFields = AddPartnerSchema.safeParse({
     name: formData.get('name'),
+    sponsoredEmployeesCount: formData.get('sponsoredEmployeesCount'),
+    totalSharedAmount: formData.get('totalSharedAmount'),
   });
 
   if (!validatedFields.success) {
@@ -87,6 +91,8 @@ export async function addPartner(hotelId: string, prevState: any, formData: Form
       name: validatedFields.data.name,
       status: 'active',
       createdAt: serverTimestamp(),
+      sponsoredEmployeesCount: validatedFields.data.sponsoredEmployeesCount,
+      totalSharedAmount: validatedFields.data.totalSharedAmount,
     });
     
     revalidatePath(`/dashboard/${hotelId}/partners`);

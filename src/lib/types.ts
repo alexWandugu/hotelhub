@@ -14,4 +14,6 @@ export type Partner = {
   name: string;
   status: 'active' | 'inactive';
   createdAt: Timestamp;
+  sponsoredEmployeesCount: number;
+  totalSharedAmount: number;
 };
