@@ -61,6 +61,9 @@ export default async function ClientsPage({ params }: { params: { hotelId: strin
   const serializedPartners = partnersData.map(partner => ({
     ...partner,
     createdAt: partner.createdAt.toDate().toISOString(),
+    lastPeriodStartedAt: partner.lastPeriodStartedAt
+      ? partner.lastPeriodStartedAt.toDate().toISOString()
+      : undefined,
   }));
 
   const totalSponsoredSlots = serializedPartners.reduce((acc, p) => acc + p.sponsoredEmployeesCount, 0);
