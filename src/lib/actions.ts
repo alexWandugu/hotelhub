@@ -341,13 +341,18 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
       const clientData = clientSnap.data() as Client;
       const availableAllowance = clientData.allowance - clientData.debt;
 
-      // The new debt is the client's previous debt plus the full transaction amount.
-      const newDebt = clientData.debt + amount;
+      if (amount > availableAllowance) {
+        const overage = amount - availableAllowance;
+        if (overage > 300) {
+          throw new Error(`Transaction failed: The amount exceeds the client's available allowance by more than the KES 300 limit.`);
+        }
+      }
+
+      const newTotalDebt = clientData.debt + amount;
       
       const transactionStatus = amount > availableAllowance ? 'flagged' : 'completed';
 
-      // Update the client's debt with the new total debt.
-      transaction.update(clientRef, { debt: newDebt });
+      transaction.update(clientRef, { debt: newTotalDebt });
       
       const newTransactionRef = doc(collection(db, `hotels/${hotelId}/transactions`));
       transaction.set(newTransactionRef, {
