@@ -340,17 +340,17 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
 
       const clientData = clientSnap.data() as Client;
       const availableAllowance = clientData.allowance - clientData.debt;
+      const newDebtAmount = amount - availableAllowance;
 
-      if (amount > availableAllowance) {
-        const overage = amount - availableAllowance;
-        if (overage > 300) {
-          throw new Error(`Transaction failed: The amount exceeds the client's available allowance by more than the KES 300 limit.`);
-        }
+      if (newDebtAmount > 300) {
+        throw new Error(`Transaction failed: The amount exceeds the client's available allowance by more than the KES 300 limit.`);
       }
 
+      // The new total debt is the old debt plus the entire transaction amount.
+      // The logic here is that the 'allowance' resets monthly, but debt accumulates.
       const newTotalDebt = clientData.debt + amount;
       
-      const transactionStatus = amount > availableAllowance ? 'flagged' : 'completed';
+      const transactionStatus = newDebtAmount > 0 ? 'flagged' : 'completed';
 
       transaction.update(clientRef, { debt: newTotalDebt });
       

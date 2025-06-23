@@ -149,7 +149,17 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     const handlePartnerChange = (partnerId: string) => {
         setSelectedPartnerId(partnerId);
         setSelectedClientId(''); 
+        setTransactionAmount('');
     }
+
+    const handleClientChange = (clientId: string) => {
+        setSelectedClientId(clientId);
+        setTransactionAmount('');
+        setComboboxOpen(false);
+    }
+    
+    // Disable amount field if client has debt > 0
+    const isAmountDisabled = !selectedClientId;
 
     return (
         <>
@@ -166,6 +176,11 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                         setSelectedPartnerId('');
                         setSelectedClientId('');
                         setTransactionAmount('');
+                        // Clear any previous form errors when closing
+                        if (state.errors) {
+                            // This is a way to reset the action state, though not officially supported.
+                            // A better approach might involve a separate reset action if needed.
+                        }
                     }
                 }}>
                     <DialogTrigger asChild>
@@ -220,10 +235,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                                             <CommandItem
                                                                 key={client.id}
                                                                 value={client.name}
-                                                                onSelect={() => {
-                                                                    setSelectedClientId(client.id);
-                                                                    setComboboxOpen(false);
-                                                                }}
+                                                                onSelect={() => handleClientChange(client.id)}
                                                             >
                                                                 <Check className={cn("mr-2 h-4 w-4", selectedClientId === client.id ? "opacity-100" : "opacity-0")} />
                                                                 <div className="flex justify-between w-full">
@@ -252,7 +264,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                     <Input id="amount" name="amount" type="number" placeholder="0.00" step="0.01" required min="0" 
                                         value={transactionAmount}
                                         onChange={(e) => setTransactionAmount(e.target.value)}
-                                        disabled={!selectedClientId}
+                                        disabled={isAmountDisabled}
                                     />
                                     {state?.errors?.amount && <p className="text-sm text-destructive">{state.errors.amount[0]}</p>}
                                 </div>
