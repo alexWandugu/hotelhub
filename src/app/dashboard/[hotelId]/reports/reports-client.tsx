@@ -113,12 +113,12 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
     return (
         <div className="space-y-8">
             <Card data-reports-ui>
-                <CardHeader>
+                <CardHeader className="print:hidden">
                     <CardTitle>Debt Report Generator</CardTitle>
                     <CardDescription>Select a partner company to view and print a report of clients with outstanding debt.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex flex-col sm:flex-row gap-4 print:hidden">
                         <Select onValueChange={setSelectedDebtPartnerId} value={selectedDebtPartnerId}>
                             <SelectTrigger className="w-full sm:w-[300px]">
                                 <SelectValue placeholder="Select a partner company" />
@@ -189,12 +189,12 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
             </Card>
 
             <Card data-reports-ui>
-                <CardHeader>
+                <CardHeader className="print:hidden">
                     <CardTitle>Period History Report</CardTitle>
                     <CardDescription>Select a partner company to view their complete billing period history.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                     <div className="flex flex-col sm:flex-row gap-4">
+                     <div className="flex flex-col sm:flex-row gap-4 print:hidden">
                         <Select onValueChange={handleHistoryPartnerChange} value={selectedHistoryPartnerId}>
                             <SelectTrigger className="w-full sm:w-[300px]">
                                 <SelectValue placeholder="Select a partner company" />

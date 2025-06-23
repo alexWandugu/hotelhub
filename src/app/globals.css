@@ -93,7 +93,7 @@ body {
   }
 
   /* Hide common UI elements by default when printing */
-  header, [data-sidebar], [data-reports-ui], .print\:hidden {
+  header, [data-sidebar] {
     display: none !important;
   }
   
@@ -111,12 +111,14 @@ body {
   }
 
   /* Reset card styles for clean printing */
-  #print-area-debt .card, #print-area-debt .card-content,
-  #print-area-periods .card, #print-area-periods .card-content {
+  [data-reports-ui] {
      border: none !important;
      box-shadow: none !important;
-     padding: 0 !important;
   }
+
+   [data-reports-ui] > .p-6 {
+     padding: 0 !important;
+   }
 
   @page {
     size: A4;
