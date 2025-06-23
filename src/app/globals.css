@@ -92,15 +92,27 @@ body {
     background-color: white !important;
   }
 
-  header, [data-sidebar], [data-reports-ui] {
+  /* Hide common UI elements by default when printing */
+  header, [data-sidebar], [data-reports-ui], .print\:hidden {
     display: none !important;
   }
   
   main {
-    padding: 1rem !important;
+    padding: 0 !important;
+  }
+  
+  /* Selectively show only the report being printed */
+  body:not([data-printing="debt"]) #print-area-debt {
+      display: none !important;
   }
 
-  #print-area .card, #print-area .card-content {
+  body:not([data-printing="periods"]) #print-area-periods {
+      display: none !important;
+  }
+
+  /* Reset card styles for clean printing */
+  #print-area-debt .card, #print-area-debt .card-content,
+  #print-area-periods .card, #print-area-periods .card-content {
      border: none !important;
      box-shadow: none !important;
      padding: 0 !important;

@@ -14,10 +14,14 @@ async function getReportData(hotelId: string) {
             getDocs(clientsQuery)
         ]);
 
-        const partners = partnersSnapshot.docs.map(doc => ({
-            id: doc.id,
-            name: doc.data().name
-        }));
+        const partners = partnersSnapshot.docs.map(doc => {
+            const data = doc.data() as Partner;
+            return {
+                id: doc.id,
+                name: data.name,
+                lastPeriodStartedAt: data.lastPeriodStartedAt ? data.lastPeriodStartedAt.toDate().toISOString() : null,
+            };
+        });
 
         const indebtedClients = clientsSnapshot.docs.map(doc => {
             const data = doc.data() as Client;
@@ -50,7 +54,7 @@ export default async function ReportsPage({ params }: { params: { hotelId: strin
       <div>
         <h1 className="text-3xl font-bold font-headline">Reports</h1>
         <p className="text-muted-foreground">
-          Generate and print reports for clients with outstanding debt.
+          Generate and print reports for clients with outstanding debt and partner billing periods.
         </p>
       </div>
       <ReportsClient

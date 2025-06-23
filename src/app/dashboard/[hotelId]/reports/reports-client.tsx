@@ -24,11 +24,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Printer, Users } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
+import { format, addDays, isAfter } from 'date-fns';
+
 
 interface ReportClientProps {
-    partners: { id: string; name: string }[];
+    partners: {
+        id: string;
+        name: string;
+        lastPeriodStartedAt: string | null;
+    }[];
     indebtedClients: {
         id: string;
         name: string;
@@ -59,9 +65,25 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
         }).format(amount);
     };
 
-    const handlePrint = () => {
+    const handlePrint = (report: 'debt' | 'periods') => {
+        document.body.setAttribute('data-printing', report);
         window.print();
-    }
+        document.body.removeAttribute('data-printing');
+    };
+
+    const getPeriodInfo = (lastPeriodStartedAt?: string | null) => {
+        if (!lastPeriodStartedAt) {
+            return { status: 'Not Started' as const, startDate: null, endDate: null };
+        }
+        const startDate = new Date(lastPeriodStartedAt);
+        const endDate = addDays(startDate, 30);
+        const isActive = isAfter(endDate, new Date());
+        return {
+            status: isActive ? 'Active' as const : 'Expired' as const,
+            startDate: format(startDate, 'PP'),
+            endDate: format(endDate, 'PP'),
+        };
+    };
 
     return (
         <>
@@ -84,16 +106,16 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
                                 ))}
                             </SelectContent>
                         </Select>
-                        <Button onClick={handlePrint} disabled={!selectedPartnerId || filteredClients.length === 0} className="w-full sm:w-auto">
+                        <Button onClick={() => handlePrint('debt')} disabled={!selectedPartnerId || filteredClients.length === 0} className="w-full sm:w-auto">
                             <Printer className="mr-2 h-4 w-4" />
-                            Print Report
+                            Print Debt Report
                         </Button>
                     </div>
                 </CardContent>
             </Card>
 
             {selectedPartnerId && (
-                <div id="print-area">
+                <div id="print-area-debt">
                     <Card>
                         <CardHeader>
                              <div className="flex justify-between items-start">
@@ -146,6 +168,61 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
                     </Card>
                 </div>
             )}
+
+            <div id="print-area-periods">
+                <Card>
+                    <CardHeader>
+                        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                            <div>
+                                <CardTitle className="font-headline text-2xl">Partner Period Report</CardTitle>
+                                <CardDescription>Generated on: {new Date().toLocaleDateString()}</CardDescription>
+                            </div>
+                            <Button onClick={() => handlePrint('periods')} className="w-full sm:w-auto print:hidden">
+                                <Printer className="mr-2 h-4 w-4" />
+                                Print Period Report
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="rounded-md border">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Partner Name</TableHead>
+                                        <TableHead>Period Status</TableHead>
+                                        <TableHead>Start Date</TableHead>
+                                        <TableHead>End Date</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {partners.length > 0 ? partners.map(partner => {
+                                        const periodInfo = getPeriodInfo(partner.lastPeriodStartedAt);
+                                        return (
+                                            <TableRow key={partner.id}>
+                                                <TableCell className="font-medium">{partner.name}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={
+                                                        periodInfo.status === 'Active' ? 'default' :
+                                                        periodInfo.status === 'Expired' ? 'destructive' : 'secondary'
+                                                    }>
+                                                        {periodInfo.status}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>{periodInfo.startDate || 'N/A'}</TableCell>
+                                                <TableCell>{periodInfo.endDate || 'N/A'}</TableCell>
+                                            </TableRow>
+                                        )
+                                    }) : (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="h-24 text-center">No partners found.</TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
         </>
     );
 }
