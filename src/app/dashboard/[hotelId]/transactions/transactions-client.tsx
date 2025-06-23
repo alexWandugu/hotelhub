@@ -10,6 +10,16 @@ import { columns } from './columns';
 import { cn } from '@/lib/utils';
 
 // UI Imports
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,11 +74,11 @@ interface TransactionsClientProps {
 }
 
 // Submit Button Component
-function SubmitButton({ disabled }: { disabled: boolean }) {
+function SubmitButton({ disabled, children }: { disabled: boolean, children: React.ReactNode }) {
     const { pending } = useFormStatus();
     return (
         <Button type="submit" disabled={pending || disabled}>
-            {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</> : 'Record Transaction'}
+            {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</> : children}
         </Button>
     );
 }
@@ -78,6 +88,8 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [confirmDebtDialogOpen, setConfirmDebtDialogOpen] = useState(false);
+    const formDataRef = useRef<FormData | null>(null);
 
     // Form state management
     const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
@@ -89,6 +101,15 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     const addTransactionWithHotelId = addTransaction.bind(null, hotelId);
     const [state, dispatch] = useActionState(addTransactionWithHotelId, { errors: null, message: null });
 
+    const resetFormState = () => {
+        setDialogOpen(false);
+        formRef.current?.reset();
+        setSelectedPartnerId('');
+        setSelectedClientId('');
+        setTransactionAmount('');
+        formDataRef.current = null;
+    }
+
     // Reset local state on successful submission
     useEffect(() => {
         if (state.message) {
@@ -96,11 +117,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                 // Errors are shown inline
             } else {
                 toast({ title: 'Success!', description: state.message });
-                setDialogOpen(false);
-                formRef.current?.reset();
-                setSelectedPartnerId('');
-                setSelectedClientId('');
-                setTransactionAmount('');
+                resetFormState();
             }
         }
     }, [state, toast]);
@@ -116,7 +133,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     
     const hasDebt = useMemo(() => {
         if (!selectedClient) return false;
-        return (selectedClient.debt || 0) > 0;
+        return Number(selectedClient.debt || 0) > 0;
     }, [selectedClient]);
 
     const availableBalance = useMemo(() => {
@@ -126,9 +143,14 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
         return allowance - utilized;
     }, [selectedClient]);
 
-    const isButtonDisabled = !selectedClientId || (parseFloat(transactionAmount) || 0) <= 0 || hasDebt;
+    const overage = useMemo(() => {
+        const amount = parseFloat(transactionAmount);
+        if (isNaN(amount) || !selectedClient || amount <= 0) return 0;
+        return amount - availableBalance;
+    }, [transactionAmount, availableBalance, selectedClient]);
+
+    const isButtonDisabled = !selectedClientId || (parseFloat(transactionAmount) || 0) <= 0 || hasDebt || overage > 300;
     
-    // Get unique partners from the clients list
     const partners = useMemo(() => {
         const partnerMap = new Map<string, { id: string; name: string }>();
         clients.forEach(client => {
@@ -139,13 +161,11 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
         return Array.from(partnerMap.values());
     }, [clients]);
 
-    // Filter clients based on selected partner for the combobox
     const filteredClients = useMemo(() => {
         if (!selectedPartnerId) return [];
         return clients.filter(client => client.partnerId === selectedPartnerId);
     }, [clients, selectedPartnerId]);
 
-    // Reset client when partner changes
     const handlePartnerChange = (partnerId: string) => {
         setSelectedPartnerId(partnerId);
         setSelectedClientId(''); 
@@ -160,6 +180,26 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     
     const isAmountDisabled = !selectedClientId || hasDebt;
 
+    const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const data = new FormData(e.currentTarget);
+        formDataRef.current = data;
+
+        if (overage > 0 && overage <= 300) {
+            setConfirmDebtDialogOpen(true);
+        } else {
+            dispatch(data);
+        }
+    };
+
+    const handleConfirmAndSubmit = () => {
+        if (formDataRef.current) {
+            formDataRef.current.set('allowOverage', 'true');
+            dispatch(formDataRef.current);
+            setConfirmDebtDialogOpen(false);
+        }
+    }
+
     return (
         <>
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -172,9 +212,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                 <Dialog open={dialogOpen} onOpenChange={(isOpen) => {
                     setDialogOpen(isOpen);
                     if (!isOpen) {
-                        setSelectedPartnerId('');
-                        setSelectedClientId('');
-                        setTransactionAmount('');
+                        resetFormState();
                     }
                 }}>
                     <DialogTrigger asChild>
@@ -191,7 +229,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                             </DialogDescription>
                         </DialogHeader>
                         {clients.length > 0 && (
-                            <form action={dispatch} ref={formRef} className="space-y-4 pt-4">
+                            <form onSubmit={handleFormSubmit} ref={formRef} className="space-y-4 pt-4">
                                 {state?.errors?._form && (
                                     <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{state.errors._form[0]}</AlertDescription></Alert>
                                 )}
@@ -234,7 +272,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                                                 <Check className={cn("mr-2 h-4 w-4", selectedClientId === client.id ? "opacity-100" : "opacity-0")} />
                                                                 <div className="flex justify-between w-full">
                                                                     <span>{client.name}</span>
-                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency((client.periodAllowance || 0) - (client.utilizedAmount || 0))}</span>
+                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency(Number(client.periodAllowance || 0) - Number(client.utilizedAmount || 0))}</span>
                                                                 </div>
                                                             </CommandItem>
                                                         ))}
@@ -249,7 +287,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                 {selectedClient && (
                                      <div className="text-xs text-muted-foreground space-y-1 rounded-md bg-muted p-2">
                                         <p><strong>Available Balance:</strong> {formatCurrency(availableBalance)}</p>
-                                        <p className={cn(hasDebt && "text-destructive font-bold")}><strong>Current Debt:</strong> {formatCurrency(selectedClient.debt || 0)}</p>
+                                        <p className={cn(hasDebt && "text-destructive font-bold")}><strong>Current Debt:</strong> {formatCurrency(Number(selectedClient.debt || 0))}</p>
                                     </div>
                                 )}
                                 
@@ -270,10 +308,32 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                     />
                                     {state?.errors?.amount && <p className="text-sm text-destructive">{state.errors.amount[0]}</p>}
                                 </div>
+                                
+                                {overage > 0 && overage <= 300 && (
+                                    <Alert variant="default" className="border-amber-500 text-amber-700 [&>svg]:text-amber-500">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        <AlertTitle>Debt Warning</AlertTitle>
+                                        <AlertDescription>
+                                            This transaction will create a new debt of <span className="font-bold">{formatCurrency(overage)}</span>.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
+                                {overage > 300 && (
+                                    <Alert variant="destructive">
+                                        <ShieldBan className="h-4 w-4" />
+                                        <AlertTitle>Debt Limit Exceeded</AlertTitle>
+                                        <AlertDescription>
+                                            The maximum allowed debt is {formatCurrency(300)}.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
+
 
                                 <DialogFooter className="pt-4">
-                                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                    <SubmitButton disabled={isButtonDisabled} />
+                                    <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                                    <SubmitButton disabled={isButtonDisabled}>
+                                        {overage > 0 && overage <= 300 ? 'Allow Transaction' : 'Record Transaction'}
+                                    </SubmitButton>
                                 </DialogFooter>
                             </form>
                         )}
@@ -281,6 +341,21 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                 </Dialog>
             </div>
             <DataTable columns={columns} data={initialTransactions} />
+
+            <AlertDialog open={confirmDebtDialogOpen} onOpenChange={setConfirmDebtDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Confirm New Debt</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This transaction exceeds the client's available balance and will create a new debt of <span className="font-bold">{formatCurrency(overage)}</span>. Are you sure you want to proceed?
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleConfirmAndSubmit}>Confirm & Proceed</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 }

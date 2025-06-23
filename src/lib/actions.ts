@@ -319,6 +319,7 @@ const TransactionSchema = z.object({
   client: z.string().min(1, { message: "You must select a client." }),
   amount: z.coerce.number().positive({ message: "Amount must be greater than zero." }),
   receiptNo: z.string().min(1, { message: "Receipt number is required." }),
+  allowOverage: z.string().optional(),
 });
 
 export async function addTransaction(hotelId: string, prevState: any, formData: FormData) {
@@ -326,6 +327,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     client: formData.get('client'),
     amount: formData.get('amount'),
     receiptNo: formData.get('receiptNo'),
+    allowOverage: formData.get('allowOverage'),
   });
 
   if (!validatedFields.success) {
@@ -335,7 +337,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     };
   }
 
-  const { client: clientId, amount, receiptNo } = validatedFields.data;
+  const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
 
   try {
     await runTransaction(db, async (transaction) => {
@@ -357,14 +359,22 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
       const utilizedAmount = Number(clientData.utilizedAmount || 0);
       const availableBalance = periodAllowance - utilizedAmount;
 
-      if (amount > availableBalance) {
-          throw new Error(`Transaction amount of ${amount} exceeds available balance of ${availableBalance}.`);
+      const overage = amount - availableBalance;
+      
+      if (overage > 300) {
+          throw new Error(`Transaction amount exceeds the debt limit of 300 KES.`);
+      }
+
+      if (overage > 0 && allowOverage !== 'true') {
+          throw new Error('This transaction creates debt and requires explicit confirmation.');
       }
 
       const newUtilizedAmount = utilizedAmount + amount;
+      const newDebt = overage > 0 ? overage : 0;
       
       transaction.update(clientRef, { 
         utilizedAmount: newUtilizedAmount,
+        debt: newDebt,
       });
       
       const newTransactionRef = doc(collection(db, `hotels/${hotelId}/transactions`));
@@ -429,7 +439,8 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
                 const newUtilized = utilized - transactionData.amount;
                 
                 // Recalculate debt based on the new utilized amount
-                const newDebt = newUtilized > (clientData.periodAllowance || 0) ? newUtilized - (clientData.periodAllowance || 0) : 0;
+                const allowance = Number(clientData.periodAllowance || 0);
+                const newDebt = newUtilized > allowance ? newUtilized - allowance : 0;
 
                 transaction.update(clientRef, { 
                   utilizedAmount: newUtilized < 0 ? 0 : newUtilized,
@@ -491,7 +502,7 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
                 return; // Not an error, just no clients to update.
             }
 
-            clientsSnapshot.forEach(clientDoc => {
+            clientsSnapshot.docs.forEach(clientDoc => {
                 const clientRef = clientDoc.ref;
                 const clientData = clientDoc.data() as Client;
 
