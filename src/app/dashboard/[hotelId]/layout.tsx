@@ -72,15 +72,21 @@ export default function DashboardLayout({
         if (userDoc.exists() && userDoc.data().status === 'active') {
           const role = userDoc.data().role as HotelUser['role'];
           setUserRole(role);
-          setIsAuthorized(true);
-
-          // Role-based route protection
-          const adminOnlyRoutes = ['/partners', '/clients', '/users', '/transactions'];
-          const currentRoute = pathname.replace(`/dashboard/${params.hotelId}`, '') || '/';
           
-          if (role === 'member' && adminOnlyRoutes.some(route => currentRoute.startsWith(route) && route !== '/')) {
-             router.replace(`/dashboard/${params.hotelId}`);
+          const currentRoute = pathname.replace(`/dashboard/${params.hotelId}`, '') || '/';
+
+          if (role === 'member') {
+            const memberAllowedRoutes = ['/new-transaction', '/ai-report'];
+            const isAllowed = memberAllowedRoutes.some(route => currentRoute.startsWith(route));
+            
+            if (!isAllowed) {
+              router.replace(`/dashboard/${params.hotelId}/new-transaction`);
+              setIsAuthorized(true); // Authorize to prevent hang, then redirect
+              return; 
+            }
           }
+          
+          setIsAuthorized(true);
 
         } else {
           toast({
@@ -113,13 +119,14 @@ export default function DashboardLayout({
   ];
 
   const memberNavItems = [
-    { href: `/dashboard/${params.hotelId}`, icon: Handshake, label: 'Transactions' },
+    { href: `/dashboard/${params.hotelId}/new-transaction`, icon: Handshake, label: 'New Transaction' },
     { href: `/dashboard/${params.hotelId}/ai-report`, icon: Bot, label: 'AI Report' },
   ];
 
   const navItems = userRole === 'admin' ? adminNavItems : memberNavItems;
 
   const isNavItemActive = (href: string) => {
+    // Exact match for the main dashboard, prefix match for others.
     if (href === `/dashboard/${params.hotelId}`) {
       return pathname === href;
     }
