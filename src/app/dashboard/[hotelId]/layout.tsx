@@ -39,6 +39,7 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { HotelUser } from '@/lib/types';
 
 export default function DashboardLayout({
   children,
@@ -51,6 +52,7 @@ export default function DashboardLayout({
   const { toast } = useToast();
   const [user, authLoading] = useAuthState(auth);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [userRole, setUserRole] = useState<HotelUser['role'] | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -68,7 +70,21 @@ export default function DashboardLayout({
         const userDoc = await getDoc(userDocRef);
 
         if (userDoc.exists() && userDoc.data().status === 'active') {
+          const role = userDoc.data().role as HotelUser['role'];
+          setUserRole(role);
           setIsAuthorized(true);
+
+          // Role-based route protection
+          const adminOnlyRoutes = ['/partners', '/clients', '/users'];
+          const currentRoute = pathname.replace(`/dashboard/${params.hotelId}`, '') || '/';
+          
+          if (role === 'member' && (adminOnlyRoutes.includes(currentRoute) || (currentRoute === '/' && pathname.endsWith('/')))) {
+            // Allow dashboard access, but redirect from others
+            if (currentRoute !== '/') {
+               router.replace(`/dashboard/${params.hotelId}`);
+            }
+          }
+
         } else {
           toast({
             variant: 'destructive',
@@ -88,9 +104,9 @@ export default function DashboardLayout({
     };
 
     checkAuthorization();
-  }, [user, authLoading, params.hotelId, router, toast]);
+  }, [user, authLoading, params.hotelId, router, toast, pathname]);
 
-  const navItems = [
+  const adminNavItems = [
     { href: `/dashboard/${params.hotelId}`, icon: AreaChart, label: 'Dashboard' },
     { href: `/dashboard/${params.hotelId}/transactions`, icon: Handshake, label: 'Transactions' },
     { href: `/dashboard/${params.hotelId}/ai-report`, icon: Bot, label: 'AI Report' },
@@ -98,6 +114,13 @@ export default function DashboardLayout({
     { href: `/dashboard/${params.hotelId}/clients`, icon: Users, label: 'Clients' },
     { href: `/dashboard/${params.hotelId}/users`, icon: Settings, label: 'Manage Users' },
   ];
+
+  const memberNavItems = [
+    { href: `/dashboard/${params.hotelId}`, icon: Handshake, label: 'Transactions' },
+    { href: `/dashboard/${params.hotelId}/ai-report`, icon: Bot, label: 'AI Report' },
+  ];
+
+  const navItems = userRole === 'admin' ? adminNavItems : memberNavItems;
 
   const isNavItemActive = (href: string) => {
     if (href === `/dashboard/${params.hotelId}`) {
@@ -169,14 +192,14 @@ export default function DashboardLayout({
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-9 w-9">
                   <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="@shadcn" />
-                  <AvatarFallback>AD</AvatarFallback>
+                  <AvatarFallback>{userRole?.charAt(0).toUpperCase()}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">Admin</p>
+                  <p className="text-sm font-medium leading-none capitalize">{userRole}</p>
                   <p className="text-xs leading-none text-muted-foreground">
                     {user?.email}
                   </p>
