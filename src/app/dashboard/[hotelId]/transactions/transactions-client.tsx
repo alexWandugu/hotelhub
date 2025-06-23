@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useActionState, useMemo } from 'react';
-import { useFormStatus } from 'react-dom';
+import { useState, useEffect, useRef, useActionState, useMemo, useTransition } from 'react';
 import { addTransaction } from '@/lib/actions';
 import type { Transaction } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -74,8 +73,7 @@ interface TransactionsClientProps {
 }
 
 // Submit Button Component
-function SubmitButton({ disabled, children }: { disabled: boolean, children: React.ReactNode }) {
-    const { pending } = useFormStatus();
+function SubmitButton({ disabled, pending, children }: { disabled: boolean, pending: boolean, children: React.ReactNode }) {
     return (
         <Button type="submit" disabled={pending || disabled}>
             {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</> : children}
@@ -98,6 +96,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     const [transactionAmount, setTransactionAmount] = useState('');
     
     // Server action state
+    const [isPending, startTransition] = useTransition();
     const addTransactionWithHotelId = addTransaction.bind(null, hotelId);
     const [state, dispatch] = useActionState(addTransactionWithHotelId, { errors: null, message: null });
 
@@ -188,14 +187,19 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
         if (overage > 0 && overage <= 300) {
             setConfirmDebtDialogOpen(true);
         } else {
-            dispatch(data);
+            startTransition(() => {
+                dispatch(data);
+            });
         }
     };
 
     const handleConfirmAndSubmit = () => {
         if (formDataRef.current) {
             formDataRef.current.set('allowOverage', 'true');
-            dispatch(formDataRef.current);
+            const data = formDataRef.current;
+            startTransition(() => {
+                dispatch(data);
+            });
             setConfirmDebtDialogOpen(false);
         }
     }
@@ -331,7 +335,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
 
                                 <DialogFooter className="pt-4">
                                     <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                                    <SubmitButton disabled={isButtonDisabled}>
+                                    <SubmitButton disabled={isButtonDisabled} pending={isPending}>
                                         {overage > 0 && overage <= 300 ? 'Allow Transaction' : 'Record Transaction'}
                                     </SubmitButton>
                                 </DialogFooter>

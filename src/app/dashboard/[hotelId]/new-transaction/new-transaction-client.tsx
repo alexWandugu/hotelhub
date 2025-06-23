@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useActionState, useMemo, useCallback } from 'react';
-import { useFormStatus } from 'react-dom';
+import { useState, useEffect, useRef, useActionState, useMemo, useCallback, useTransition } from 'react';
 import { addTransaction } from '@/lib/actions';
-import type { Transaction, Client, Partner } from '@/lib/types';
+import type { Transaction, Client } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { DataTable } from '../transactions/data-table';
 import { memberColumns } from '../transactions/member-columns';
@@ -31,7 +30,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PlusCircle, AlertTriangle, Loader2, ChevronsUpDown, Check, ShieldBan } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
 
 // Type Definitions
 type SerializableTransaction = Omit<Transaction, 'createdAt'> & { createdAt: string };
@@ -53,8 +51,7 @@ interface NewTransactionClientProps {
 
 
 // Submit Button Component
-function SubmitButton({ disabled, children }: { disabled: boolean, children: React.ReactNode }) {
-    const { pending } = useFormStatus();
+function SubmitButton({ disabled, pending, children }: { disabled: boolean, pending: boolean, children: React.ReactNode }) {
     return (
         <Button type="submit" disabled={pending || disabled}>
             {pending ? (
@@ -87,6 +84,7 @@ export default function NewTransactionClient({ hotelId, initialClients, initialT
     const [transactionAmount, setTransactionAmount] = useState('');
     
     // Server action state
+    const [isPending, startTransition] = useTransition();
     const addTransactionWithHotelId = addTransaction.bind(null, hotelId);
     const [state, dispatch] = useActionState(addTransactionWithHotelId, { errors: null, message: null });
 
@@ -198,14 +196,19 @@ export default function NewTransactionClient({ hotelId, initialClients, initialT
         if (overage > 0 && overage <= 300) {
             setConfirmDebtDialogOpen(true);
         } else {
-            dispatch(data);
+            startTransition(() => {
+                dispatch(data);
+            });
         }
     };
 
     const handleConfirmAndSubmit = () => {
         if (formDataRef.current) {
             formDataRef.current.set('allowOverage', 'true');
-            dispatch(formDataRef.current);
+            const data = formDataRef.current;
+            startTransition(() => {
+                dispatch(data);
+            });
             setConfirmDebtDialogOpen(false);
         }
     }
@@ -320,7 +323,7 @@ export default function NewTransactionClient({ hotelId, initialClients, initialT
                                 )}
                                 
                                 <div className="pt-2">
-                                    <SubmitButton disabled={isButtonDisabled}>
+                                    <SubmitButton disabled={isButtonDisabled} pending={isPending}>
                                       {overage > 0 && overage <= 300 ? 'Allow Transaction' : <><PlusCircle className="mr-2 h-4 w-4" />Record Transaction</>}
                                     </SubmitButton>
                                 </div>
