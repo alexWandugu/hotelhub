@@ -116,7 +116,7 @@ export default function HotelSelectionPage() {
                 const userData = userDoc.data();
                 if (userData.status === 'active') {
                     toast({
-                        title: `Joining ${hotelDoc.data().name}...`,
+                        title: `Accessing ${hotelDoc.data().name}...`,
                         description: "Welcome back!",
                     });
                     router.push(`/dashboard/${joinHotelId}`);
@@ -224,9 +224,9 @@ export default function HotelSelectionPage() {
           <TabsContent value="join">
             <Card>
               <CardHeader>
-                <CardTitle className="font-headline text-2xl">Join an Existing Hotel</CardTitle>
+                <CardTitle className="font-headline text-2xl">Access an Existing Hotel</CardTitle>
                 <CardDescription>
-                  Enter the Hotel ID provided by your administrator to join.
+                  Enter a Hotel ID to request access or open an existing dashboard.
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleJoinHotel}>
@@ -250,7 +250,7 @@ export default function HotelSelectionPage() {
                 </CardContent>
                 <CardFooter>
                   <Button type="submit" className="w-full" disabled={loading}>
-                     {loading ? 'Processing...' : 'Join Hotel'}
+                     {loading ? 'Accessing...' : 'Access Hotel'}
                      <LogIn className="ml-2" />
                   </Button>
                 </CardFooter>
