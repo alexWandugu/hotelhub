@@ -339,13 +339,18 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
       }
 
       const clientData = clientSnap.data() as Client;
-      const availableAllowance = clientData.allowance - clientData.debt;
+      
+      const allowance = clientData.allowance ?? 0;
+      const debt = clientData.debt ?? 0;
+      const availableAllowance = allowance - debt;
 
       if (amount > availableAllowance) {
-        throw new Error(`Transaction amount of ${new Intl.NumberFormat('en-KE', {style: 'currency', currency: 'KES'}).format(amount)} exceeds the available allowance of ${new Intl.NumberFormat('en-KE', {style: 'currency', currency: 'KES'}).format(availableAllowance)}.`);
+        const formattedAmount = new Intl.NumberFormat('en-KE', {style: 'currency', currency: 'KES'}).format(amount);
+        const formattedAllowance = new Intl.NumberFormat('en-KE', {style: 'currency', currency: 'KES'}).format(availableAllowance);
+        throw new Error(`Transaction amount (${formattedAmount}) exceeds available allowance (${formattedAllowance}).`);
       }
 
-      const newTotalDebt = clientData.debt + amount;
+      const newTotalDebt = debt + amount;
       
       transaction.update(clientRef, { debt: newTotalDebt });
       
@@ -405,7 +410,8 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
 
             if (clientSnap.exists()) {
                 const clientData = clientSnap.data() as Client;
-                const newDebt = clientData.debt - transactionData.amount;
+                const debt = clientData.debt ?? 0;
+                const newDebt = debt - transactionData.amount;
                 transaction.update(clientRef, { debt: newDebt < 0 ? 0 : newDebt });
             }
 

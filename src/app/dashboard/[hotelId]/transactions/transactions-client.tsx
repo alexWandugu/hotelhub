@@ -106,17 +106,28 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     
     // Currency formatter
     const formatCurrency = (amount: number) => {
-        if (typeof amount !== 'number') return 'N/A';
+        if (typeof amount !== 'number' || isNaN(amount)) return 'N/A';
         return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(amount);
     };
 
     // Derived data for UI logic
     const selectedClient = useMemo(() => clients.find(c => c.id === selectedClientId), [clients, selectedClientId]);
-    const availableAllowance = useMemo(() => selectedClient ? selectedClient.allowance - selectedClient.debt : 0, [selectedClient]);
+    
+    const currentDebt = useMemo(() => {
+        if (!selectedClient) return 0;
+        return selectedClient.debt ?? 0;
+    }, [selectedClient]);
+
+    const availableAllowance = useMemo(() => {
+        if (!selectedClient) return 0;
+        const allowance = selectedClient.allowance ?? 0;
+        const debt = selectedClient.debt ?? 0;
+        return allowance - debt;
+    }, [selectedClient]);
+
     const numericAmount = parseFloat(transactionAmount) || 0;
     
-    // UI logic for button state
-    const isAmountInvalid = availableAllowance > 0 && numericAmount > availableAllowance;
+    const isAmountInvalid = numericAmount > availableAllowance;
     const isButtonDisabled = !selectedClientId || numericAmount <= 0 || isAmountInvalid;
 
     // Get unique partners from the clients list
@@ -230,7 +241,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                                                 <Check className={cn("mr-2 h-4 w-4", selectedClientId === client.id ? "opacity-100" : "opacity-0")} />
                                                                 <div className="flex justify-between w-full">
                                                                     <span>{client.name}</span>
-                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency(client.allowance - client.debt)}</span>
+                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency((client.allowance ?? 0) - (client.debt ?? 0))}</span>
                                                                 </div>
                                                             </CommandItem>
                                                         ))}
@@ -244,7 +255,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                 
                                 {selectedClient && (
                                      <div className="text-xs text-muted-foreground space-y-1 rounded-md bg-muted p-2">
-                                        <p><strong>Current Debt:</strong> {formatCurrency(selectedClient.debt)}</p>
+                                        <p><strong>Current Debt:</strong> {formatCurrency(currentDebt)}</p>
                                         <p><strong>Available Allowance:</strong> {formatCurrency(availableAllowance)}</p>
                                     </div>
                                 )}
