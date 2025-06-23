@@ -17,8 +17,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Logo } from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Mail, User } from "lucide-react";
-import { auth } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { auth, googleProvider } from "@/lib/firebase";
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  sendEmailVerification,
+  signInWithPopup,
+  signOut
+} from "firebase/auth";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -33,7 +39,17 @@ export default function AuthPage() {
     const password = (e.currentTarget.elements.namedItem("login-password") as HTMLInputElement).value;
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      if (!userCredential.user.emailVerified) {
+        await sendEmailVerification(userCredential.user);
+        toast({
+          variant: "destructive",
+          title: "Email Not Verified",
+          description: "A new verification email has been sent. Please check your inbox.",
+        });
+        setLoading(false);
+        return;
+      }
       toast({
         title: "Success!",
         description: "You have been successfully logged in.",
@@ -57,16 +73,38 @@ export default function AuthPage() {
     const password = (e.currentTarget.elements.namedItem("signup-password") as HTMLInputElement).value;
 
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(userCredential.user);
+      await signOut(auth);
       toast({
         title: "Account Created!",
-        description: "You have been successfully signed up.",
+        description: "A verification email has been sent. Please check your inbox to verify your account.",
+      });
+      setActiveTab("login");
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Sign Up Failed",
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+      toast({
+        title: "Success!",
+        description: "You have been successfully signed in with Google.",
       });
       router.push("/dashboard");
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Sign Up Failed",
+        title: "Google Sign-In Failed",
         description: error.message,
       });
     } finally {
@@ -80,7 +118,7 @@ export default function AuthPage() {
         <div className="flex justify-center mb-6">
           <Logo />
         </div>
-        <Tabs defaultValue="login" className="w-full" onValueChange={setActiveTab}>
+        <Tabs value={activeTab} className="w-full" onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -116,6 +154,22 @@ export default function AuthPage() {
                   </Button>
                 </CardFooter>
               </form>
+               <CardContent className="pt-0">
+                <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">
+                        Or continue with
+                        </span>
+                    </div>
+                </div>
+                <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
+                    <svg role="img" viewBox="0 0 24 24" className="mr-2 h-4 w-4"><path fill="currentColor" d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.6 2.04-4.82 2.04-5.84 0-9.92-4.82-9.92-10.75s4.08-10.75 9.92-10.75c3.28 0 5.22 1.36 6.42 2.56l2.5-2.5C20.4 1.45 17.22 0 12.48 0 5.6 0 0 5.6 0 12.5S5.6 25 12.48 25c7.2 0 12.04-4.82 12.04-12.5v-1.58h-12.04z"/></svg>
+                    Sign in with Google
+                </Button>
+              </CardContent>
             </Card>
           </TabsContent>
           <TabsContent value="signup">
@@ -156,6 +210,22 @@ export default function AuthPage() {
                   </Button>
                 </CardFooter>
                </form>
+               <CardContent className="pt-0">
+                <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">
+                        Or continue with
+                        </span>
+                    </div>
+                </div>
+                <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
+                     <svg role="img" viewBox="0 0 24 24" className="mr-2 h-4 w-4"><path fill="currentColor" d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.6 2.04-4.82 2.04-5.84 0-9.92-4.82-9.92-10.75s4.08-10.75 9.92-10.75c3.28 0 5.22 1.36 6.42 2.56l2.5-2.5C20.4 1.45 17.22 0 12.48 0 5.6 0 0 5.6 0 12.5S5.6 25 12.48 25c7.2 0 12.04-4.82 12.04-12.5v-1.58h-12.04z"/></svg>
+                    Sign up with Google
+                </Button>
+              </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
