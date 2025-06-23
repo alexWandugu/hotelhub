@@ -7,6 +7,8 @@ import type { Transaction } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { DataTable } from './data-table';
 import { columns } from './columns';
+
+// UI Imports
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,16 +30,30 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { PlusCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { PlusCircle, AlertTriangle, Loader2, ChevronsUpDown, Check } from 'lucide-react';
 
-
+// Type Definitions
 type SerializableTransaction = Omit<Transaction, 'createdAt'> & { createdAt: string };
 interface ClientForDropdown {
   id: string;
   name: string;
   partnerName: string;
   partnerId: string;
-  availableAllowance: number;
+  allowance: number;
+  debt: number;
 }
 interface TransactionsClientProps {
     initialTransactions: SerializableTransaction[];
@@ -45,47 +61,73 @@ interface TransactionsClientProps {
     hotelId: string;
 }
 
-function SubmitButton() {
+// Submit Button Component
+function SubmitButton({ disabled, text }: { disabled: boolean; text: string }) {
     const { pending } = useFormStatus();
     return (
-        <Button type="submit" disabled={pending}>
-            {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</> : 'Record Transaction'}
+        <Button type="submit" disabled={pending || disabled}>
+            {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</> : text}
         </Button>
     );
 }
 
+// Main Component
 export function TransactionsClient({ initialTransactions, clients, hotelId }: TransactionsClientProps) {
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
-    const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
 
-
+    // Form state management
+    const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
+    const [selectedClientId, setSelectedClientId] = useState<string>('');
+    const [comboboxOpen, setComboboxOpen] = useState(false);
+    const [transactionAmount, setTransactionAmount] = useState('');
+    
+    // Server action state
     const addTransactionWithHotelId = addTransaction.bind(null, hotelId);
     const [state, dispatch] = useActionState(addTransactionWithHotelId, { errors: null, message: null });
 
+    // Reset local state on successful submission
     useEffect(() => {
         if (state.message) {
             if (state.errors) {
-                // Errors shown inline
+                // Errors are shown inline
             } else {
                 toast({ title: 'Success!', description: state.message });
                 setDialogOpen(false);
                 formRef.current?.reset();
-                setSelectedPartnerId(null);
+                setSelectedPartnerId('');
+                setSelectedClientId('');
+                setTransactionAmount('');
             }
         }
     }, [state, toast]);
     
+    // Currency formatter
     const formatCurrency = (amount: number) => {
         if (typeof amount !== 'number') return 'N/A';
-        return new Intl.NumberFormat('en-KE', {
-            style: 'currency',
-            currency: 'KES',
-        }).format(amount);
+        return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(amount);
     };
 
-     // Get unique partners from the clients list
+    // Derived data for UI logic
+    const selectedClient = useMemo(() => clients.find(c => c.id === selectedClientId), [clients, selectedClientId]);
+    const availableAllowance = useMemo(() => selectedClient ? selectedClient.allowance - selectedClient.debt : 0, [selectedClient]);
+    const numericAmount = parseFloat(transactionAmount) || 0;
+    const newDebt = numericAmount > availableAllowance ? numericAmount - availableAllowance : 0;
+    
+    // UI logic for button state and text
+    const isOverHardLimit = newDebt > 300;
+    let buttonText = "Record Transaction";
+    let isButtonDisabled = !selectedClientId || numericAmount <= 0;
+
+    if (newDebt > 0) {
+        buttonText = "Allow Transaction";
+        if (isOverHardLimit) {
+            isButtonDisabled = true;
+        }
+    }
+
+    // Get unique partners from the clients list
     const partners = useMemo(() => {
         const partnerMap = new Map<string, { id: string; name: string }>();
         clients.forEach(client => {
@@ -96,12 +138,17 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
         return Array.from(partnerMap.values());
     }, [clients]);
 
-    // Filter clients based on selected partner
+    // Filter clients based on selected partner for the combobox
     const filteredClients = useMemo(() => {
         if (!selectedPartnerId) return [];
         return clients.filter(client => client.partnerId === selectedPartnerId);
     }, [clients, selectedPartnerId]);
 
+    // Reset client when partner changes
+    const handlePartnerChange = (partnerId: string) => {
+        setSelectedPartnerId(partnerId);
+        setSelectedClientId(''); 
+    }
 
     return (
         <>
@@ -115,7 +162,9 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                 <Dialog open={dialogOpen} onOpenChange={(isOpen) => {
                     setDialogOpen(isOpen);
                     if (!isOpen) {
-                        setSelectedPartnerId(null);
+                        setSelectedPartnerId('');
+                        setSelectedClientId('');
+                        setTransactionAmount('');
                     }
                 }}>
                     <DialogTrigger asChild>
@@ -134,11 +183,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                         {clients.length > 0 && (
                             <form action={dispatch} ref={formRef} className="space-y-4 pt-4">
                                 {state?.errors?._form && (
-                                    <Alert variant="destructive">
-                                        <AlertTriangle className="h-4 w-4" />
-                                        <AlertTitle>Error</AlertTitle>
-                                        <AlertDescription>{state.errors._form[0]}</AlertDescription>
-                                    </Alert>
+                                    <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{state.errors._form[0]}</AlertDescription></Alert>
                                 )}
                                 <div className="space-y-2">
                                     <Label htmlFor="receiptNo">Receipt No.</Label>
@@ -147,46 +192,88 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="partner">Company</Label>
-                                    <Select name="partner" required onValueChange={setSelectedPartnerId}>
-                                        <SelectTrigger id="partner">
-                                            <SelectValue placeholder="Select a company" />
-                                        </SelectTrigger>
+                                    <Select name="partner" required onValueChange={handlePartnerChange} value={selectedPartnerId}>
+                                        <SelectTrigger id="partner"><SelectValue placeholder="Select a company" /></SelectTrigger>
                                         <SelectContent>
-                                            {partners.map(partner => (
-                                                <SelectItem key={partner.id} value={partner.id}>
-                                                    {partner.name}
-                                                </SelectItem>
-                                            ))}
+                                            {partners.map(partner => <SelectItem key={partner.id} value={partner.id}>{partner.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="client">Client</Label>
-                                    <Select name="client" required disabled={!selectedPartnerId}>
-                                        <SelectTrigger id="client">
-                                            <SelectValue placeholder={!selectedPartnerId ? "Select a company first" : "Select a client"} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {filteredClients.map(client => (
-                                                <SelectItem key={client.id} value={client.id}>
-                                                    <div className="flex justify-between w-full">
-                                                        <span>{client.name}</span>
-                                                        <span className="font-mono text-xs">{formatCurrency(client.availableAllowance)}</span>
-                                                    </div>
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <Label>Client</Label>
+                                    <Input type="hidden" name="client" value={selectedClientId} />
+                                    <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" role="combobox" aria-expanded={comboboxOpen} className="w-full justify-between" disabled={!selectedPartnerId}>
+                                                {selectedClientId ? filteredClients.find((client) => client.id === selectedClientId)?.name : "Select a client..."}
+                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[375px] p-0">
+                                            <Command>
+                                                <CommandInput placeholder="Search client..." />
+                                                <CommandList>
+                                                    <CommandEmpty>No client found.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {filteredClients.map((client) => (
+                                                            <CommandItem
+                                                                key={client.id}
+                                                                value={client.name}
+                                                                onSelect={() => {
+                                                                    setSelectedClientId(client.id);
+                                                                    setComboboxOpen(false);
+                                                                }}
+                                                            >
+                                                                <Check className={cn("mr-2 h-4 w-4", selectedClientId === client.id ? "opacity-100" : "opacity-0")} />
+                                                                <div className="flex justify-between w-full">
+                                                                    <span>{client.name}</span>
+                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency(client.allowance - client.debt)}</span>
+                                                                </div>
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
                                     {state?.errors?.client && <p className="text-sm text-destructive">{state.errors.client[0]}</p>}
                                 </div>
+                                
+                                {selectedClient && (
+                                     <div className="text-xs text-muted-foreground space-y-1 rounded-md bg-muted p-2">
+                                        <p><strong>Current Debt:</strong> {formatCurrency(selectedClient.debt)}</p>
+                                        <p><strong>Available Allowance:</strong> {formatCurrency(availableAllowance)}</p>
+                                    </div>
+                                )}
+                                
                                 <div className="space-y-2">
                                     <Label htmlFor="amount">Amount (KES)</Label>
-                                    <Input id="amount" name="amount" type="number" placeholder="0.00" step="0.01" required min="0" />
+                                    <Input id="amount" name="amount" type="number" placeholder="0.00" step="0.01" required min="0" 
+                                        value={transactionAmount}
+                                        onChange={(e) => setTransactionAmount(e.target.value)}
+                                        disabled={!selectedClientId}
+                                    />
                                     {state?.errors?.amount && <p className="text-sm text-destructive">{state.errors.amount[0]}</p>}
                                 </div>
+
+                                {newDebt > 0 && (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="newDebt" className="text-destructive">New Debt Incurred</Label>
+                                        <Input id="newDebt" name="newDebt" value={formatCurrency(newDebt)} disabled className="font-bold text-destructive border-destructive" />
+                                    </div>
+                                )}
+
+                                {isOverHardLimit && (
+                                    <Alert variant="destructive">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        <AlertTitle>Allowance Limit Exceeded</AlertTitle>
+                                        <AlertDescription>The new debt exceeds the KES 300 limit. This transaction cannot be processed.</AlertDescription>
+                                    </Alert>
+                                )}
+
                                 <DialogFooter className="pt-4">
                                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                    <SubmitButton />
+                                    <SubmitButton disabled={isButtonDisabled} text={buttonText} />
                                 </DialogFooter>
                             </form>
                         )}
