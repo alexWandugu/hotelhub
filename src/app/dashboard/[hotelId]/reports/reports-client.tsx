@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useTransition } from 'react';
+import { useState, useMemo, useTransition, useEffect } from 'react';
 import { getPartnerPeriodHistory } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import type { PeriodHistory } from '@/lib/types';
@@ -75,6 +75,18 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
         return filteredIndebtedClients.reduce((acc, client) => acc + client.debt, 0);
     }, [filteredIndebtedClients]);
     
+    useEffect(() => {
+        const handleAfterPrint = () => {
+            document.body.removeAttribute('data-printing');
+        };
+
+        window.addEventListener('afterprint', handleAfterPrint);
+
+        return () => {
+            window.removeEventListener('afterprint', handleAfterPrint);
+        };
+    }, []);
+
     const handleHistoryPartnerChange = (partnerId: string) => {
         setSelectedHistoryPartnerId(partnerId);
         setPeriodHistory([]);
@@ -107,18 +119,17 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
     const handlePrint = (report: 'debt' | 'periods') => {
         document.body.setAttribute('data-printing', report);
         window.print();
-        document.body.removeAttribute('data-printing');
     };
 
     return (
         <div className="space-y-8">
-            <Card data-reports-ui>
-                <CardHeader className="print:hidden">
+            <Card data-reports-ui id="print-area-debt-card">
+                <CardHeader className="print-hide">
                     <CardTitle>Debt Report Generator</CardTitle>
                     <CardDescription>Select a partner company to view and print a report of clients with outstanding debt.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-4 print:hidden">
+                    <div className="flex flex-col sm:flex-row gap-4 print-hide">
                         <Select onValueChange={setSelectedDebtPartnerId} value={selectedDebtPartnerId}>
                             <SelectTrigger className="w-full sm:w-[300px]">
                                 <SelectValue placeholder="Select a partner company" />
@@ -188,13 +199,13 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
                 </CardContent>
             </Card>
 
-            <Card data-reports-ui>
-                <CardHeader className="print:hidden">
+            <Card data-reports-ui id="print-area-periods-card">
+                <CardHeader className="print-hide">
                     <CardTitle>Period History Report</CardTitle>
                     <CardDescription>Select a partner company to view their complete billing period history.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                     <div className="flex flex-col sm:flex-row gap-4 print:hidden">
+                     <div className="flex flex-col sm:flex-row gap-4 print-hide">
                         <Select onValueChange={handleHistoryPartnerChange} value={selectedHistoryPartnerId}>
                             <SelectTrigger className="w-full sm:w-[300px]">
                                 <SelectValue placeholder="Select a partner company" />
