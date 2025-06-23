@@ -6,7 +6,6 @@ import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc, getDoc,
 import { db } from './firebase';
 import { revalidatePath } from 'next/cache';
 import type { Client, Partner, Transaction } from './types';
-import { auth } from '@/lib/firebase';
 
 const ReportSchema = z.object({
   report: z.string().min(10, { message: 'Report must not be empty.' }),
@@ -310,11 +309,6 @@ const TransactionSchema = z.object({
 });
 
 export async function addTransaction(hotelId: string, prevState: any, formData: FormData) {
-  const user = auth.currentUser;
-  if (!user) {
-    return { errors: { _form: ["You must be logged in to perform this action."] }, message: "Authentication failed." };
-  }
-
   const validatedFields = TransactionSchema.safeParse({
     client: formData.get('client'),
     amount: formData.get('amount'),
@@ -355,7 +349,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         amount: amount,
         status: transactionStatus,
         createdAt: serverTimestamp(),
-        recordedBy: user.email || 'N/A',
         receiptNo: receiptNo,
       });
     });
