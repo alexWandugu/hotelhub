@@ -166,7 +166,7 @@ export default function AuthPage() {
                     </div>
                 </div>
                 <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
-                    <svg role="img" viewBox="0 0 24 24" className="mr-2 h-4 w-4"><path fill="currentColor" d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.6 2.04-4.82 2.04-5.84 0-9.92-4.82-9.92-10.75s4.08-10.75 9.92-10.75c3.28 0 5.22 1.36 6.42 2.56l2.5-2.5C20.4 1.45 17.22 0 12.48 0 5.6 0 0 5.6 0 12.5S5.6 25 12.48 25c7.2 0 12.04-4.82 12.04-12.5v-1.58h-12.04z"/></svg>
+                    <svg role="img" viewBox="0 0 24 24" className="mr-2 h-4 w-4"><path fill="currentColor" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,4.73 12.2,4.73C15.29,4.73 17.1,6.7 17.1,6.7L19,4.72C19,4.72 16.56,2 12.1,2C6.42,2 2.03,6.8 2.03,12C2.03,17.05 6.16,22 12.25,22C17.6,22 21.5,18.33 21.5,12.33C21.5,11.76 21.35,11.1 21.35,11.1Z"/></svg>
                     Sign in with Google
                 </Button>
               </CardContent>
@@ -222,7 +222,7 @@ export default function AuthPage() {
                     </div>
                 </div>
                 <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
-                     <svg role="img" viewBox="0 0 24 24" className="mr-2 h-4 w-4"><path fill="currentColor" d="M12.48 10.92v3.28h7.84c-.24 1.84-.85 3.18-1.73 4.1-1.02 1.02-2.6 2.04-4.82 2.04-5.84 0-9.92-4.82-9.92-10.75s4.08-10.75 9.92-10.75c3.28 0 5.22 1.36 6.42 2.56l2.5-2.5C20.4 1.45 17.22 0 12.48 0 5.6 0 0 5.6 0 12.5S5.6 25 12.48 25c7.2 0 12.04-4.82 12.04-12.5v-1.58h-12.04z"/></svg>
+                     <svg role="img" viewBox="0 0 24 24" className="mr-2 h-4 w-4"><path fill="currentColor" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,4.73 12.2,4.73C15.29,4.73 17.1,6.7 17.1,6.7L19,4.72C19,4.72 16.56,2 12.1,2C6.42,2 2.03,6.8 2.03,12C2.03,17.05 6.16,22 12.25,22C17.6,22 21.5,18.33 21.5,12.33C21.5,11.76 21.35,11.1 21.35,11.1Z"/></svg>
                     Sign up with Google
                 </Button>
               </CardContent>
