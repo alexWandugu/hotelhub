@@ -14,7 +14,7 @@ export default async function TransactionsPage() {
 
   return (
     <div className="space-y-8">
-       <div className="flex items-center justify-between space-y-2">
+       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold font-headline">Transactions</h1>
             <p className="text-muted-foreground">

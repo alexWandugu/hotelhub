@@ -14,9 +14,9 @@ export default function UsersPage() {
         <CardHeader>
           <CardTitle>Coming Soon</CardTitle>
           <CardDescription>This feature is currently under construction.</CardDescription>
-        </CardHeader>
+        </Header>
         <CardContent>
-          <div className="flex flex-col items-center justify-center text-center p-16 bg-secondary rounded-lg">
+          <div className="flex flex-col items-center justify-center text-center p-8 md:p-16 bg-secondary rounded-lg">
               <Settings className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="font-semibold">User Access Management</p>
               <p className="text-sm text-muted-foreground">Functionality to invite, approve, and manage user roles will be available here.</p>

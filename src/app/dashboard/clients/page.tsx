@@ -16,7 +16,7 @@ export default function ClientsPage() {
           <CardDescription>This feature is currently under construction.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center text-center p-16 bg-secondary rounded-lg">
+          <div className="flex flex-col items-center justify-center text-center p-8 md:p-16 bg-secondary rounded-lg">
               <Users className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="font-semibold">Client Management</p>
               <p className="text-sm text-muted-foreground">Functionality to add, view, and manage clients will be available here.</p>
