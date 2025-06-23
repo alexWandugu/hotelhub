@@ -126,24 +126,21 @@ export async function updatePartner(hotelId: string, partnerId: string, prevStat
         await runTransaction(db, async (transaction) => {
             const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
             
-            // Get existing clients to validate against new employee count
             const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', '==', partnerId));
-            const clientsSnapshot = await getDocs(clientsQuery);
+            const clientsSnapshot = await transaction.get(clientsQuery);
             const existingClientsCount = clientsSnapshot.size;
 
             if (sponsoredEmployeesCount < existingClientsCount) {
                 throw new Error(`Cannot set employee count to ${sponsoredEmployeesCount}. There are already ${existingClientsCount} clients for this partner.`);
             }
 
-            // Update partner document
             transaction.update(partnerRef, { name, sponsoredEmployeesCount, totalSharedAmount });
             
-            // Recalculate allowance and update all existing clients for this partner
             const newAllowance = sponsoredEmployeesCount > 0 ? totalSharedAmount / sponsoredEmployeesCount : 0;
             
             clientsSnapshot.docs.forEach(clientDoc => {
                 const clientRef = doc(db, `hotels/${hotelId}/clients`, clientDoc.id);
-                transaction.update(clientRef, { allowance: newAllowance });
+                transaction.update(clientRef, { allowance: newAllowance, partnerName: name });
             });
         });
         
@@ -165,16 +162,13 @@ export async function deletePartner(hotelId: string, partnerId: string) {
     try {
         const batch = writeBatch(db);
 
-        // Find all clients associated with the partner
         const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', '==', partnerId));
         const clientsSnapshot = await getDocs(clientsQuery);
 
-        // Add delete operation for each client to the batch
         clientsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
 
-        // Add delete operation for the partner itself
         const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
         batch.delete(partnerRef);
         
