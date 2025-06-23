@@ -2,7 +2,7 @@
 
 import { transactionReportSummary } from '@/ai/flows/transaction-report-summary';
 import { z } from 'zod';
-import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc, getDoc, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc, getDoc, query, where, getDocs, writeBatch, runTransaction } from 'firebase/firestore';
 import { db } from './firebase';
 import { revalidatePath } from 'next/cache';
 import type { Client, Partner } from './types';
@@ -54,7 +54,6 @@ export async function manageUserStatus(
       await deleteDoc(userDocRef);
     }
     
-    // Revalidate the path to refresh the data on the page
     revalidatePath(`/dashboard/${hotelId}/users`);
 
   } catch (error: any) {
@@ -63,14 +62,14 @@ export async function manageUserStatus(
   }
 }
 
-const AddPartnerSchema = z.object({
+const PartnerSchema = z.object({
   name: z.string().min(2, { message: "Partner name must be at least 2 characters." }),
-  sponsoredEmployeesCount: z.coerce.number().int().min(0, "Sponsored employees must be a positive number."),
+  sponsoredEmployeesCount: z.coerce.number().int().min(1, "Number of employees must be at least 1."),
   totalSharedAmount: z.coerce.number().min(0, "Shared amount must be a positive number."),
 });
 
 export async function addPartner(hotelId: string, prevState: any, formData: FormData) {
-  const validatedFields = AddPartnerSchema.safeParse({
+  const validatedFields = PartnerSchema.safeParse({
     name: formData.get('name'),
     sponsoredEmployeesCount: formData.get('sponsoredEmployeesCount'),
     totalSharedAmount: formData.get('totalSharedAmount'),
@@ -89,11 +88,9 @@ export async function addPartner(hotelId: string, prevState: any, formData: Form
 
   try {
     await addDoc(collection(db, 'hotels', hotelId, 'partners'), {
-      name: validatedFields.data.name,
+      ...validatedFields.data,
       status: 'active',
       createdAt: serverTimestamp(),
-      sponsoredEmployeesCount: validatedFields.data.sponsoredEmployeesCount,
-      totalSharedAmount: validatedFields.data.totalSharedAmount,
     });
     
     revalidatePath(`/dashboard/${hotelId}/partners`);
@@ -104,10 +101,97 @@ export async function addPartner(hotelId: string, prevState: any, formData: Form
   }
 }
 
+
+export async function updatePartner(hotelId: string, partnerId: string, prevState: any, formData: FormData) {
+    const validatedFields = PartnerSchema.safeParse({
+        name: formData.get('name'),
+        sponsoredEmployeesCount: formData.get('sponsoredEmployeesCount'),
+        totalSharedAmount: formData.get('totalSharedAmount'),
+    });
+
+    if (!validatedFields.success) {
+        return {
+            errors: validatedFields.error.flatten().fieldErrors,
+            message: "Validation failed. Please check the form.",
+        };
+    }
+
+    if (!hotelId || !partnerId) {
+        return { errors: null, message: "An unexpected error occurred: ID is missing." };
+    }
+    
+    const { name, sponsoredEmployeesCount, totalSharedAmount } = validatedFields.data;
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
+            
+            // Get existing clients to validate against new employee count
+            const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', '==', partnerId));
+            const clientsSnapshot = await getDocs(clientsQuery);
+            const existingClientsCount = clientsSnapshot.size;
+
+            if (sponsoredEmployeesCount < existingClientsCount) {
+                throw new Error(`Cannot set employee count to ${sponsoredEmployeesCount}. There are already ${existingClientsCount} clients for this partner.`);
+            }
+
+            // Update partner document
+            transaction.update(partnerRef, { name, sponsoredEmployeesCount, totalSharedAmount });
+            
+            // Recalculate allowance and update all existing clients for this partner
+            const newAllowance = sponsoredEmployeesCount > 0 ? totalSharedAmount / sponsoredEmployeesCount : 0;
+            
+            clientsSnapshot.docs.forEach(clientDoc => {
+                const clientRef = doc(db, `hotels/${hotelId}/clients`, clientDoc.id);
+                transaction.update(clientRef, { allowance: newAllowance });
+            });
+        });
+        
+        revalidatePath(`/dashboard/${hotelId}/partners`);
+        revalidatePath(`/dashboard/${hotelId}/clients`);
+        return { errors: null, message: 'Partner updated successfully!' };
+
+    } catch (error: any) {
+        return { errors: { _form: [error.message] }, message: `Database Error: Failed to update partner.` };
+    }
+}
+
+
+export async function deletePartner(hotelId: string, partnerId: string) {
+    if (!hotelId || !partnerId) {
+        throw new Error('Invalid arguments provided for deletion.');
+    }
+
+    try {
+        const batch = writeBatch(db);
+
+        // Find all clients associated with the partner
+        const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', '==', partnerId));
+        const clientsSnapshot = await getDocs(clientsQuery);
+
+        // Add delete operation for each client to the batch
+        clientsSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // Add delete operation for the partner itself
+        const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
+        batch.delete(partnerRef);
+        
+        await batch.commit();
+        
+        revalidatePath(`/dashboard/${hotelId}/partners`);
+        revalidatePath(`/dashboard/${hotelId}/clients`);
+    } catch (error: any) {
+        console.error("Error deleting partner:", error);
+        throw new Error(`Failed to delete partner: ${error.message}`);
+    }
+}
+
+
 const AddClientSchema = z.object({
   name: z.string().min(2, { message: "Client name must be at least 2 characters." }),
-  partner: z.string().min(1, { message: "You must select a partner." }), // Will be in "id|name" format
-  allowance: z.coerce.number().min(0, "Allowance must be a positive number."),
+  partner: z.string().min(1, { message: "You must select a partner." }), 
 });
 
 
@@ -115,7 +199,6 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
   const validatedFields = AddClientSchema.safeParse({
     name: formData.get('name'),
     partner: formData.get('partner'),
-    allowance: formData.get('allowance'),
   });
 
   if (!validatedFields.success) {
@@ -136,7 +219,6 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
   }
 
   try {
-     // 1. Get partner data for validation
     const partnerRef = doc(db, `hotels/${hotelId}/partners`, partnerId);
     const partnerSnap = await getDoc(partnerRef);
     if (!partnerSnap.exists()) {
@@ -144,40 +226,28 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
     }
     const partnerData = partnerSnap.data() as Partner;
 
-    // 2. Get existing clients for this partner
     const clientsQuery = query(
       collection(db, `hotels/${hotelId}/clients`),
       where('partnerId', '==', partnerId)
     );
     const clientsSnapshot = await getDocs(clientsQuery);
-    const existingClients = clientsSnapshot.docs.map(doc => doc.data() as Client);
+    const existingClientsCount = clientsSnapshot.size;
 
-    // 3. Perform validation checks
-    // 3a. Employee count validation
-    if (existingClients.length >= partnerData.sponsoredEmployeesCount) {
+    if (existingClientsCount >= partnerData.sponsoredEmployeesCount) {
       return {
         errors: { _form: [`Cannot add new client. The employee limit (${partnerData.sponsoredEmployeesCount}) for ${partnerName} has been reached.`] },
         message: 'Validation failed.'
       };
     }
+    
+    const allowance = partnerData.totalSharedAmount / partnerData.sponsoredEmployeesCount;
 
-    // 3b. Allowance validation
-    const currentTotalAllowance = existingClients.reduce((sum, client) => sum + client.allowance, 0);
-    const newAllowance = validatedFields.data.allowance;
-    if (currentTotalAllowance + newAllowance > partnerData.totalSharedAmount) {
-       return {
-        errors: { _form: [`Cannot add new client. Adding this allowance would exceed the company's shared amount. Remaining: KES ${(partnerData.totalSharedAmount - currentTotalAllowance).toFixed(2)}`] },
-        message: 'Validation failed.'
-      };
-    }
-
-    // 4. If validation passes, add the new client
     await addDoc(collection(db, 'hotels', hotelId, 'clients'), {
       name: validatedFields.data.name,
       partnerId,
       partnerName,
-      allowance: validatedFields.data.allowance,
-      status: 'active', // Default status
+      allowance: allowance,
+      status: 'active',
       createdAt: serverTimestamp(),
     });
 

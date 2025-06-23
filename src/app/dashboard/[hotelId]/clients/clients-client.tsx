@@ -44,7 +44,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Users, PlusCircle, AlertTriangle } from 'lucide-react';
+import { Users, PlusCircle, AlertTriangle, Loader2 } from 'lucide-react';
 
 type SerializableClient = Omit<Client, 'createdAt'> & {
     createdAt: string;
@@ -60,7 +60,7 @@ function SubmitButton() {
     const { pending } = useFormStatus();
     return (
         <Button type="submit" disabled={pending}>
-            {pending ? 'Adding...' : 'Add Client'}
+            {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</> : 'Add Client'}
         </Button>
     );
 }
@@ -76,14 +76,7 @@ export function ClientsClient({ initialClients, partners, hotelId }: ClientsClie
     useEffect(() => {
         if (state.message) {
             if (state.errors) {
-                 // Don't show a toast for form-specific errors, they are displayed in the dialog
-                if(!state.errors._form) {
-                    toast({
-                        variant: 'destructive',
-                        title: 'Error',
-                        description: state.message,
-                    });
-                }
+                // Form-specific errors are displayed in the dialog
             } else {
                 toast({
                     title: 'Success!',
@@ -162,12 +155,9 @@ export function ClientsClient({ initialClients, partners, hotelId }: ClientsClie
                                     </Select>
                                     {state?.errors?.partner && <p className="text-sm text-destructive">{state.errors.partner[0]}</p>}
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="allowance">Meal Allowance (KES)</Label>
-                                    <Input id="allowance" name="allowance" type="number" placeholder="0.00" step="0.01" required min="0" />
-                                    {state?.errors?.allowance && <p className="text-sm text-destructive">{state.errors.allowance[0]}</p>}
-                                </div>
-
+                                <p className="text-xs text-muted-foreground pt-2">
+                                  The meal allowance will be automatically calculated based on the partner's agreement.
+                                </p>
                                 <DialogFooter className="pt-4">
                                     <DialogClose asChild>
                                         <Button variant="outline">Cancel</Button>
