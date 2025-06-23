@@ -163,13 +163,21 @@ export async function deletePartner(hotelId: string, partnerId: string) {
     try {
         const batch = writeBatch(db);
 
+        // Delete associated clients
         const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', '==', partnerId));
         const clientsSnapshot = await getDocs(clientsQuery);
-
         clientsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
 
+        // Delete associated transactions
+        const transactionsQuery = query(collection(db, `hotels/${hotelId}/transactions`), where('partnerId', '==', partnerId));
+        const transactionsSnapshot = await getDocs(transactionsQuery);
+        transactionsSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // Delete the partner
         const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
         batch.delete(partnerRef);
         
@@ -249,6 +257,7 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
     });
 
     revalidatePath(`/dashboard/${hotelId}/clients`);
+    revalidatePath(`/dashboard/${hotelId}/partners`);
     revalidatePath(`/dashboard/${hotelId}/transactions`);
     return { errors: null, message: 'Client added successfully!' };
   } catch (error) {
@@ -369,6 +378,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     
     revalidatePath(`/dashboard/${hotelId}/transactions`);
     revalidatePath(`/dashboard/${hotelId}/clients`);
+    revalidatePath(`/dashboard/${hotelId}/partners`);
     return { errors: null, message: "Transaction recorded successfully!" };
 
   } catch (error: any) {
@@ -410,7 +420,7 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
 
             if (clientSnap.exists()) {
                 const clientData = clientSnap.data() as Client;
-                const debt = clientData.debt ?? 0;
+                const debt = Number(clientData.debt || 0);
                 const newDebt = debt - transactionData.amount;
                 transaction.update(clientRef, { debt: newDebt < 0 ? 0 : newDebt });
             }
@@ -420,7 +430,64 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
 
         revalidatePath(`/dashboard/${hotelId}/transactions`);
         revalidatePath(`/dashboard/${hotelId}/clients`);
+        revalidatePath(`/dashboard/${hotelId}/partners`);
     } catch (error: any) {
         throw new Error(`Failed to delete transaction: ${error.message}`);
+    }
+}
+
+export async function startNewPeriod(hotelId: string, partnerId: string) {
+    if (!hotelId || !partnerId) {
+        throw new Error('Invalid arguments provided to start a new period.');
+    }
+    
+    try {
+        await runTransaction(db, async (transaction) => {
+            const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
+            const partnerSnap = await transaction.get(partnerRef);
+
+            if (!partnerSnap.exists()) {
+                throw new Error("Partner not found.");
+            }
+
+            const partnerData = partnerSnap.data() as Partner;
+            const { totalSharedAmount, sponsoredEmployeesCount } = partnerData;
+            
+            if (sponsoredEmployeesCount <= 0) {
+                 throw new Error("Partner has no sponsored employees to start a new period for.");
+            }
+
+            const newPeriodAllowance = totalSharedAmount / sponsoredEmployeesCount;
+            
+            const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where("partnerId", "==", partnerId));
+            const clientsSnapshot = await getDocs(clientsQuery);
+
+            if (clientsSnapshot.empty) {
+                // No clients, nothing to do. This is not an error.
+                return;
+            }
+
+            clientsSnapshot.forEach(clientDoc => {
+                const clientRef = clientDoc.ref;
+                const clientData = clientDoc.data() as Client;
+
+                const currentAllowance = Number(clientData.allowance || 0);
+                const currentDebt = Number(clientData.debt || 0);
+                
+                const remainingAllowance = currentAllowance - currentDebt;
+                const newTotalAllowance = remainingAllowance + newPeriodAllowance;
+
+                transaction.update(clientRef, {
+                    allowance: newTotalAllowance,
+                    debt: 0
+                });
+            });
+        });
+
+        revalidatePath(`/dashboard/${hotelId}/partners`);
+        revalidatePath(`/dashboard/${hotelId}/clients`);
+    } catch (error: any) {
+        console.error("Error starting new period:", error);
+        throw new Error(`Failed to start new period: ${error.message}`);
     }
 }

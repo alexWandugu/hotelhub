@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef, useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { addPartner, updatePartner, deletePartner } from '@/lib/actions';
-import type { Partner } from '@/lib/types';
+import { addPartner, updatePartner, deletePartner, startNewPeriod } from '@/lib/actions';
+import type { Partner, Client } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
@@ -55,15 +55,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Building2, PlusCircle, MoreHorizontal, Pencil, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Building2, PlusCircle, MoreHorizontal, Pencil, Trash2, AlertTriangle, Loader2, HandCoins } from 'lucide-react';
 
 
 type SerializablePartner = Omit<Partner, 'createdAt'> & {
     createdAt: string;
 };
+type SerializableClient = Omit<Client, 'createdAt'> & {
+    createdAt: string;
+};
 
 interface PartnersClientProps {
     initialPartners: SerializablePartner[];
+    initialClients: SerializableClient[];
     hotelId: string;
 }
 
@@ -86,13 +90,15 @@ function EditSubmitButton() {
 }
 
 
-export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps) {
+export function PartnersClient({ initialPartners, initialClients, hotelId }: PartnersClientProps) {
     const { toast } = useToast();
     
     // State for dialogs
     const [addDialogOpen, setAddDialogOpen] = useState(false);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
     const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
+    const [newPeriodAlertOpen, setNewPeriodAlertOpen] = useState(false);
+    
     const [selectedPartner, setSelectedPartner] = useState<SerializablePartner | null>(null);
 
     // Form Refs
@@ -144,6 +150,17 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
         }
         setDeleteAlertOpen(false);
     };
+
+    const handleStartNewPeriod = async () => {
+        if (!selectedPartner) return;
+        try {
+            await startNewPeriod(hotelId, selectedPartner.id);
+            toast({ title: 'New Period Started', description: `Allowances for ${selectedPartner.name}'s clients have been updated.` });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Action Failed', description: error.message });
+        }
+        setNewPeriodAlertOpen(false);
+    }
     
     const formatDate = (dateString: string) => {
         if (!dateString) return 'N/A';
@@ -154,6 +171,13 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
         if (typeof amount !== 'number') return 'N/A';
         return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(amount);
     };
+
+    const getConsumedAmount = (partnerId: string) => {
+        const consumed = initialClients
+            .filter(c => c.partnerId === partnerId)
+            .reduce((sum, c) => sum + (c.debt || 0), 0);
+        return consumed;
+    }
 
     return (
         <>
@@ -206,9 +230,8 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                                     <TableRow>
                                         <TableHead>Partner Name</TableHead>
                                         <TableHead>Status</TableHead>
-                                        <TableHead className="text-center">Employees</TableHead>
                                         <TableHead className="text-right">Shared Amount</TableHead>
-                                        <TableHead>Date Joined</TableHead>
+                                        <TableHead className="text-right">Consumed This Period</TableHead>
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -217,9 +240,8 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                                         <TableRow key={partner.id}>
                                             <TableCell className="font-medium">{partner.name}</TableCell>
                                             <TableCell><Badge variant={partner.status === 'active' ? 'default' : 'secondary'}>{partner.status}</Badge></TableCell>
-                                            <TableCell className="text-center">{partner.sponsoredEmployeesCount}</TableCell>
                                             <TableCell className="text-right font-mono">{formatCurrency(partner.totalSharedAmount)}</TableCell>
-                                            <TableCell>{formatDate(partner.createdAt)}</TableCell>
+                                            <TableCell className="text-right font-mono">{formatCurrency(getConsumedAmount(partner.id))}</TableCell>
                                             <TableCell className="text-right">
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
@@ -227,6 +249,9 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                        <DropdownMenuItem onSelect={() => { setSelectedPartner(partner); setNewPeriodAlertOpen(true) }}>
+                                                            <HandCoins className="mr-2 h-4 w-4" /><span>Start New Period</span>
+                                                        </DropdownMenuItem>
                                                         <DropdownMenuItem onSelect={() => { setSelectedPartner(partner); setEditDialogOpen(true); }}>
                                                             <Pencil className="mr-2 h-4 w-4" /><span>Edit</span>
                                                         </DropdownMenuItem>
@@ -296,12 +321,28 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                     <AlertDialogHeader>
                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the partner <span className="font-bold">{selectedPartner?.name}</span> and all of their associated clients.
+                            This action cannot be undone. This will permanently delete the partner <span className="font-bold">{selectedPartner?.name}</span> and all of their associated clients and transactions.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeletePartner} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* New Period Alert Dialog */}
+            <AlertDialog open={newPeriodAlertOpen} onOpenChange={setNewPeriodAlertOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Start a New Billing Period?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will reset the debts for all clients of <span className="font-bold">{selectedPartner?.name}</span> and add the new period's allowance. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleStartNewPeriod}>Continue</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
