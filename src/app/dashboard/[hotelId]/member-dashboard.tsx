@@ -108,7 +108,7 @@ export default function MemberDashboard({ hotelId }: { hotelId: string }) {
 
                 if (activePartnerIds.length > 0) {
                      // Clients
-                    const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', 'in', activePartnerIds), orderBy('name', 'asc'));
+                    const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', 'in', activePartnerIds));
                     const clientsUnsub = onSnapshot(clientsQuery, (snapshot) => {
                         const fetchedClients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client))
                             .map(c => ({
@@ -120,6 +120,7 @@ export default function MemberDashboard({ hotelId }: { hotelId: string }) {
                                 utilizedAmount: Number(c.utilizedAmount || 0),
                                 debt: Number(c.debt || 0),
                             }));
+                        fetchedClients.sort((a, b) => a.name.localeCompare(b.name));
                         setClients(fetchedClients);
                     });
                     unsubscribes.push(clientsUnsub);
