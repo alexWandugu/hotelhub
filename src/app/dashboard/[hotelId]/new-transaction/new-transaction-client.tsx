@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { DataTable } from '../transactions/data-table';
 import { memberColumns } from '../transactions/member-columns';
 import { cn } from '@/lib/utils';
-import { collection, getDocs, orderBy, query, onSnapshot, Unsubscribe, where } from 'firebase/firestore';
+import { collection, orderBy, query, onSnapshot, Unsubscribe, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 // UI Imports
@@ -45,6 +45,13 @@ interface ClientForDropdown {
   debt: number;
 }
 
+interface NewTransactionClientProps {
+    hotelId: string;
+    initialTransactions: SerializableTransaction[];
+    initialClients: ClientForDropdown[];
+}
+
+
 // Submit Button Component
 function SubmitButton({ disabled, children }: { disabled: boolean, children: React.ReactNode }) {
     const { pending } = useFormStatus();
@@ -62,17 +69,16 @@ function SubmitButton({ disabled, children }: { disabled: boolean, children: Rea
     );
 }
 
-export default function NewTransactionClient({ hotelId }: { hotelId: string }) {
+export default function NewTransactionClient({ hotelId, initialClients, initialTransactions }: NewTransactionClientProps) {
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const formDataRef = useRef<FormData | null>(null);
 
-    const [loading, setLoading] = useState(true);
     const [confirmDebtDialogOpen, setConfirmDebtDialogOpen] = useState(false);
     
-    // Data State
-    const [transactions, setTransactions] = useState<SerializableTransaction[]>([]);
-    const [clients, setClients] = useState<ClientForDropdown[]>([]);
+    // Data State - initialized with server-fetched data
+    const [transactions, setTransactions] = useState<SerializableTransaction[]>(initialTransactions);
+    const [clients, setClients] = useState<ClientForDropdown[]>(initialClients);
     
     // Form state management
     const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
@@ -104,60 +110,41 @@ export default function NewTransactionClient({ hotelId }: { hotelId: string }) {
         }
     }, [state, toast, resetFormState]);
     
-    // Data Fetching and Real-time Updates
+    // Real-time Updates
     useEffect(() => {
-        setLoading(true);
         let unsubscribes: Unsubscribe[] = [];
 
-        const fetchAndSubscribe = async () => {
-            try {
-                // Partners with active periods
-                const partnersQuery = query(collection(db, `hotels/${hotelId}/partners`), where('lastPeriodStartedAt', '!=', null));
-                const partnersSnapshot = await getDocs(partnersQuery);
-                const activePartners = partnersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Partner));
-                const activePartnerIds = activePartners.map(p => p.id);
+        // Clients listener
+        const activePartnerIds = Array.from(new Set(initialClients.map(c => c.partnerId)));
+        if (activePartnerIds.length > 0) {
+            const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', 'in', activePartnerIds));
+            const clientsUnsub = onSnapshot(clientsQuery, (snapshot) => {
+                const fetchedClients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client))
+                    .map(c => ({
+                        id: c.id, 
+                        name: c.name,
+                        partnerName: c.partnerName,
+                        partnerId: c.partnerId,
+                        periodAllowance: Number(c.periodAllowance || 0),
+                        utilizedAmount: Number(c.utilizedAmount || 0),
+                        debt: Number(c.debt || 0),
+                    }));
+                fetchedClients.sort((a, b) => a.name.localeCompare(b.name));
+                setClients(fetchedClients);
+            });
+            unsubscribes.push(clientsUnsub);
+        }
 
-                if (activePartnerIds.length > 0) {
-                     // Clients
-                    const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', 'in', activePartnerIds));
-                    const clientsUnsub = onSnapshot(clientsQuery, (snapshot) => {
-                        const fetchedClients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client))
-                            .map(c => ({
-                                id: c.id, 
-                                name: c.name,
-                                partnerName: c.partnerName,
-                                partnerId: c.partnerId,
-                                periodAllowance: Number(c.periodAllowance || 0),
-                                utilizedAmount: Number(c.utilizedAmount || 0),
-                                debt: Number(c.debt || 0),
-                            }));
-                        fetchedClients.sort((a, b) => a.name.localeCompare(b.name));
-                        setClients(fetchedClients);
-                    });
-                    unsubscribes.push(clientsUnsub);
-                } else {
-                    setClients([]);
-                }
+        // Transactions listener
+        const transactionsQuery = query(collection(db, `hotels/${hotelId}/transactions`), orderBy('createdAt', 'desc'));
+        const transactionsUnsub = onSnapshot(transactionsQuery, (snapshot) => {
+            const fetchedTransactions = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, createdAt: (doc.data().createdAt.toDate()).toISOString() })) as SerializableTransaction[];
+            setTransactions(fetchedTransactions);
+        });
+        unsubscribes.push(transactionsUnsub);
 
-                // Transactions
-                const transactionsQuery = query(collection(db, `hotels/${hotelId}/transactions`), orderBy('createdAt', 'desc'));
-                const transactionsUnsub = onSnapshot(transactionsQuery, (snapshot) => {
-                    const fetchedTransactions = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, createdAt: (doc.data().createdAt.toDate()).toISOString() })) as SerializableTransaction[];
-                    setTransactions(fetchedTransactions);
-                });
-                unsubscribes.push(transactionsUnsub);
-
-            } catch (error) {
-                console.error("Error fetching data:", error);
-                toast({ variant: 'destructive', title: 'Error', description: 'Could not load dashboard data.' });
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchAndSubscribe();
         return () => unsubscribes.forEach(unsub => unsub());
-    }, [hotelId, toast]);
+    }, [hotelId, initialClients]);
 
     const formatCurrency = (amount: number) => {
         if (typeof amount !== 'number' || isNaN(amount)) return 'N/A';
@@ -236,7 +223,7 @@ export default function NewTransactionClient({ hotelId }: { hotelId: string }) {
                         <CardTitle>New Transaction Details</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {clients.length > 0 ? (
+                        {initialClients.length > 0 ? (
                             <form onSubmit={handleFormSubmit} ref={formRef} className="space-y-4">
                                 {state?.errors?._form && (
                                     <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{state.errors._form[0]}</AlertDescription></Alert>
@@ -354,15 +341,7 @@ export default function NewTransactionClient({ hotelId }: { hotelId: string }) {
                             <CardDescription>A list of the most recent transactions.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            {loading ? (
-                                <div className="space-y-2">
-                                    <Skeleton className="h-10 w-full" />
-                                    <Skeleton className="h-10 w-full" />
-                                    <Skeleton className="h-10 w-full" />
-                                </div>
-                            ) : (
-                               <DataTable columns={memberColumns} data={transactions} />
-                            )}
+                           <DataTable columns={memberColumns} data={transactions} />
                         </CardContent>
                     </Card>
                 </div>
