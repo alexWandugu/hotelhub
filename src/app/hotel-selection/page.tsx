@@ -17,9 +17,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Logo } from '@/components/logo';
 import { useToast } from '@/hooks/use-toast';
 import { auth, db } from '@/lib/firebase';
-import { collection, addDoc, getDoc, doc } from 'firebase/firestore';
+import { collection, doc, getDoc, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { Building, LogIn, PlusCircle } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function HotelSelectionPage() {
   const router = useRouter();
@@ -51,17 +52,28 @@ export default function HotelSelectionPage() {
 
     setLoading(true);
     try {
-      const hotelRef = await addDoc(collection(db, 'hotels'), {
-        name: createHotelName,
-        adminUid: user.uid,
-        createdAt: new Date(),
+      const newHotelRef = doc(collection(db, 'hotels'));
+      await runTransaction(db, async (transaction) => {
+        transaction.set(newHotelRef, {
+            name: createHotelName,
+            adminUid: user.uid,
+            createdAt: serverTimestamp(),
+        });
+
+        const userDocRef = doc(db, 'hotels', newHotelRef.id, 'users', user.uid);
+        transaction.set(userDocRef, {
+            email: user.email,
+            role: 'admin',
+            status: 'active',
+            joinedAt: serverTimestamp(),
+        });
       });
       
       toast({
         title: 'Hotel Created!',
         description: `Your hotel "${createHotelName}" has been successfully created.`,
       });
-      router.push(`/dashboard/${hotelRef.id}`);
+      router.push(`/dashboard/${newHotelRef.id}`);
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -75,7 +87,15 @@ export default function HotelSelectionPage() {
 
   const handleJoinHotel = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-     if (!joinHotelId.trim()) {
+    if (!user) {
+        toast({
+            variant: "destructive",
+            title: "Not Authenticated",
+            description: "You must be logged in to join a hotel.",
+        });
+        return;
+    }
+    if (!joinHotelId.trim()) {
         toast({
             variant: "destructive",
             title: "Validation Error",
@@ -89,11 +109,41 @@ export default function HotelSelectionPage() {
         const hotelDoc = await getDoc(hotelDocRef);
 
         if (hotelDoc.exists()) {
-            toast({
-                title: "Joining Hotel...",
-                description: `Redirecting you to the dashboard.`,
-            });
-            router.push(`/dashboard/${joinHotelId}`);
+            const userDocRef = doc(db, 'hotels', joinHotelId, 'users', user.uid);
+            const userDoc = await getDoc(userDocRef);
+
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                if (userData.status === 'active') {
+                    toast({
+                        title: `Joining ${hotelDoc.data().name}...`,
+                        description: "Welcome back!",
+                    });
+                    router.push(`/dashboard/${joinHotelId}`);
+                } else if (userData.status === 'pending') {
+                    toast({
+                        title: "Request Pending",
+                        description: "Your request to join this hotel is still awaiting approval.",
+                    });
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Access Denied",
+                        description: "You do not have permission to join this hotel.",
+                    });
+                }
+            } else {
+                await setDoc(userDocRef, {
+                    email: user.email,
+                    role: 'member',
+                    status: 'pending',
+                    requestedAt: serverTimestamp()
+                });
+                 toast({
+                    title: "Request Sent!",
+                    description: "Your request has been sent to the hotel admin for approval.",
+                });
+            }
         } else {
              toast({
                 variant: "destructive",
@@ -115,7 +165,11 @@ export default function HotelSelectionPage() {
    if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Loading user session...</p>
+         <div className="flex flex-col items-center gap-4">
+           <Logo />
+           <Skeleton className="h-4 w-48 mt-2" />
+           <Skeleton className="h-4 w-32" />
+        </div>
       </div>
     );
   }
@@ -153,6 +207,7 @@ export default function HotelSelectionPage() {
                         className="pl-10"
                         value={createHotelName}
                         onChange={(e) => setCreateHotelName(e.target.value)}
+                        disabled={loading}
                       />
                     </div>
                   </div>
@@ -188,13 +243,14 @@ export default function HotelSelectionPage() {
                         className="pl-10"
                         value={joinHotelId}
                         onChange={(e) => setJoinHotelId(e.target.value)}
+                        disabled={loading}
                       />
                     </div>
                   </div>
                 </CardContent>
                 <CardFooter>
                   <Button type="submit" className="w-full" disabled={loading}>
-                     {loading ? 'Joining...' : 'Join Hotel'}
+                     {loading ? 'Processing...' : 'Join Hotel'}
                      <LogIn className="ml-2" />
                   </Button>
                 </CardFooter>
