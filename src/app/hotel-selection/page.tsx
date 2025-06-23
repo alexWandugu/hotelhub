@@ -180,7 +180,7 @@ export default function HotelSelectionPage() {
         <div className="flex justify-center mb-6">
           <Logo />
         </div>
-        <Tabs defaultValue="create" className="w-full">
+        <Tabs defaultValue="join" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="create">Create Hotel</TabsTrigger>
             <TabsTrigger value="join">Join Hotel</TabsTrigger>
