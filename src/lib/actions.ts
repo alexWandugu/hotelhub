@@ -102,3 +102,51 @@ export async function addPartner(hotelId: string, prevState: any, formData: Form
     return { errors: null, message: `Database Error: Failed to add partner.` };
   }
 }
+
+const AddClientSchema = z.object({
+  name: z.string().min(2, { message: "Client name must be at least 2 characters." }),
+  partner: z.string().min(1, { message: "You must select a partner." }), // Will be in "id|name" format
+  allowance: z.coerce.number().min(0, "Allowance must be a positive number."),
+});
+
+
+export async function addClient(hotelId: string, prevState: any, formData: FormData) {
+  const validatedFields = AddClientSchema.safeParse({
+    name: formData.get('name'),
+    partner: formData.get('partner'),
+    allowance: formData.get('allowance'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Validation failed. Please check the form.",
+    };
+  }
+
+  if (!hotelId) {
+    return { errors: null, message: "An unexpected error occurred: Hotel ID is missing." };
+  }
+
+  const [partnerId, partnerName] = validatedFields.data.partner.split('|');
+
+  if (!partnerId || !partnerName) {
+    return { errors: { partner: ['Invalid partner selected.'] }, message: "Validation failed." };
+  }
+
+  try {
+    await addDoc(collection(db, 'hotels', hotelId, 'clients'), {
+      name: validatedFields.data.name,
+      partnerId,
+      partnerName,
+      allowance: validatedFields.data.allowance,
+      status: 'active', // Default status
+      createdAt: serverTimestamp(),
+    });
+
+    revalidatePath(`/dashboard/${hotelId}/clients`);
+    return { errors: null, message: 'Client added successfully!' };
+  } catch (error) {
+    return { errors: null, message: `Database Error: Failed to add client.` };
+  }
+}

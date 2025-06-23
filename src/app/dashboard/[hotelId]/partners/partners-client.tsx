@@ -93,9 +93,9 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
 
     const formatCurrency = (amount: number) => {
         if (typeof amount !== 'number') return 'N/A';
-        return new Intl.NumberFormat('en-US', {
+        return new Intl.NumberFormat('en-KE', {
             style: 'currency',
-            currency: 'USD',
+            currency: 'KES',
         }).format(amount);
     };
 

@@ -17,3 +17,13 @@ export type Partner = {
   sponsoredEmployeesCount: number;
   totalSharedAmount: number;
 };
+
+export type Client = {
+  id: string;
+  name: string;
+  partnerId: string;
+  partnerName: string;
+  allowance: number;
+  status: 'active' | 'suspended';
+  createdAt: Timestamp;
+};

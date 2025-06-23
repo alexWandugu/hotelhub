@@ -1,7 +1,61 @@
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Users } from "lucide-react";
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { ClientsClient } from './clients-client';
+import type { Client, Partner } from '@/lib/types';
+import { notFound } from 'next/navigation';
 
-export default function ClientsPage() {
+async function getClients(hotelId: string): Promise<Client[]> {
+    try {
+        const clientsQuery = query(
+            collection(db, `hotels/${hotelId}/clients`),
+            orderBy('createdAt', 'desc')
+        );
+        const querySnapshot = await getDocs(clientsQuery);
+        const clients = querySnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        })) as Client[];
+        return clients;
+    } catch (error) {
+        console.error("Failed to fetch clients:", error);
+        return [];
+    }
+}
+
+async function getPartners(hotelId: string): Promise<Partner[]> {
+    try {
+        const partnersQuery = query(
+            collection(db, `hotels/${hotelId}/partners`)
+        );
+        const querySnapshot = await getDocs(partnersQuery);
+        const partners = querySnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        })) as Partner[];
+        return partners;
+    } catch (error) {
+        console.error("Failed to fetch partners:", error);
+        return [];
+    }
+}
+
+export default async function ClientsPage({ params }: { params: { hotelId: string } }) {
+  if (!params.hotelId) {
+    notFound();
+  }
+  
+  const clientsData = await getClients(params.hotelId);
+  const partnersData = await getPartners(params.hotelId);
+
+  const clients = clientsData.map(client => ({
+    ...client,
+    // Convert timestamp to a serializable format (ISO string)
+    createdAt: client.createdAt.toDate().toISOString(),
+  }));
+
+  // We only need id and name for the dropdown, no need to serialize other fields
+  const partnersForDropdown = partnersData.map(p => ({ id: p.id, name: p.name }));
+
   return (
     <div className="space-y-8">
       <div>
@@ -10,19 +64,11 @@ export default function ClientsPage() {
           Manage clients associated with your partners.
         </p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Coming Soon</CardTitle>
-          <CardDescription>This feature is currently under construction.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center text-center p-8 md:p-16 bg-secondary rounded-lg">
-              <Users className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="font-semibold">Client Management</p>
-              <p className="text-sm text-muted-foreground">Functionality to add, view, and manage clients will be available here.</p>
-          </div>
-        </CardContent>
-      </Card>
+      <ClientsClient 
+        initialClients={clients} 
+        partners={partnersForDropdown} 
+        hotelId={params.hotelId} 
+      />
     </div>
   );
 }
