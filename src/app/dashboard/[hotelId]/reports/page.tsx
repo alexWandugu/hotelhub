@@ -19,7 +19,6 @@ async function getReportData(hotelId: string) {
             return {
                 id: doc.id,
                 name: data.name,
-                lastPeriodStartedAt: data.lastPeriodStartedAt ? data.lastPeriodStartedAt.toDate().toISOString() : null,
             };
         });
 
@@ -58,8 +57,9 @@ export default async function ReportsPage({ params }: { params: { hotelId: strin
         </p>
       </div>
       <ReportsClient
+        hotelId={params.hotelId}
         partners={partners}
-        indebtedClients={indebtedClients}
+        initialIndebtedClients={indebtedClients}
       />
     </div>
   );

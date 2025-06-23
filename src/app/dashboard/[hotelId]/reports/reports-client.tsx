@@ -1,6 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useTransition } from 'react';
+import { getPartnerPeriodHistory } from '@/lib/actions';
+import { useToast } from '@/hooks/use-toast';
+import type { PeriodHistory } from '@/lib/types';
+
 import {
   Card,
   CardContent,
@@ -25,17 +29,21 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Users } from 'lucide-react';
-import { format, addDays, isAfter } from 'date-fns';
+import { Printer, Users, CalendarClock, Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
 
+type SerializablePeriodHistory = Omit<PeriodHistory, 'startDate' | 'endDate'> & {
+    startDate: string;
+    endDate: string;
+};
 
 interface ReportClientProps {
+    hotelId: string;
     partners: {
         id: string;
         name: string;
-        lastPeriodStartedAt: string | null;
     }[];
-    indebtedClients: {
+    initialIndebtedClients: {
         id: string;
         name: string;
         partnerId: string;
@@ -44,18 +52,47 @@ interface ReportClientProps {
     }[];
 }
 
-export function ReportsClient({ partners, indebtedClients }: ReportClientProps) {
-    const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
-    const selectedPartner = partners.find(p => p.id === selectedPartnerId);
+export function ReportsClient({ hotelId, partners, initialIndebtedClients }: ReportClientProps) {
+    const { toast } = useToast();
+    const [isPending, startTransition] = useTransition();
+    
+    // Debt Report State
+    const [selectedDebtPartnerId, setSelectedDebtPartnerId] = useState<string>('');
+    
+    // Period History Report State
+    const [selectedHistoryPartnerId, setSelectedHistoryPartnerId] = useState<string>('');
+    const [periodHistory, setPeriodHistory] = useState<SerializablePeriodHistory[]>([]);
 
-    const filteredClients = useMemo(() => {
-        if (!selectedPartnerId) return [];
-        return indebtedClients.filter(c => c.partnerId === selectedPartnerId);
-    }, [indebtedClients, selectedPartnerId]);
+    const selectedDebtPartner = partners.find(p => p.id === selectedDebtPartnerId);
+    const selectedHistoryPartner = partners.find(p => p.id === selectedHistoryPartnerId);
+    
+    const filteredIndebtedClients = useMemo(() => {
+        if (!selectedDebtPartnerId) return [];
+        return initialIndebtedClients.filter(c => c.partnerId === selectedDebtPartnerId);
+    }, [initialIndebtedClients, selectedDebtPartnerId]);
 
     const totalDebt = useMemo(() => {
-        return filteredClients.reduce((acc, client) => acc + client.debt, 0);
-    }, [filteredClients]);
+        return filteredIndebtedClients.reduce((acc, client) => acc + client.debt, 0);
+    }, [filteredIndebtedClients]);
+    
+    const handleHistoryPartnerChange = (partnerId: string) => {
+        setSelectedHistoryPartnerId(partnerId);
+        setPeriodHistory([]);
+        if (partnerId) {
+            startTransition(async () => {
+                try {
+                    const history = await getPartnerPeriodHistory(hotelId, partnerId);
+                    setPeriodHistory(history);
+                } catch (error: any) {
+                    toast({
+                        variant: 'destructive',
+                        title: 'Error fetching history',
+                        description: error.message
+                    });
+                }
+            });
+        }
+    };
 
     const formatCurrency = (amount: number) => {
         if (typeof amount !== 'number') return 'N/A';
@@ -64,6 +101,8 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
             currency: 'KES',
         }).format(amount);
     };
+    
+    const formatDate = (dateString: string) => format(new Date(dateString), 'PP');
 
     const handlePrint = (report: 'debt' | 'periods') => {
         document.body.setAttribute('data-printing', report);
@@ -71,22 +110,8 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
         document.body.removeAttribute('data-printing');
     };
 
-    const getPeriodInfo = (lastPeriodStartedAt?: string | null) => {
-        if (!lastPeriodStartedAt) {
-            return { status: 'Not Started' as const, startDate: null, endDate: null };
-        }
-        const startDate = new Date(lastPeriodStartedAt);
-        const endDate = addDays(startDate, 30);
-        const isActive = isAfter(endDate, new Date());
-        return {
-            status: isActive ? 'Active' as const : 'Expired' as const,
-            startDate: format(startDate, 'PP'),
-            endDate: format(endDate, 'PP'),
-        };
-    };
-
     return (
-        <>
+        <div className="space-y-8">
             <Card data-reports-ui>
                 <CardHeader>
                     <CardTitle>Debt Report Generator</CardTitle>
@@ -94,7 +119,7 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex flex-col sm:flex-row gap-4">
-                        <Select onValueChange={setSelectedPartnerId} value={selectedPartnerId}>
+                        <Select onValueChange={setSelectedDebtPartnerId} value={selectedDebtPartnerId}>
                             <SelectTrigger className="w-full sm:w-[300px]">
                                 <SelectValue placeholder="Select a partner company" />
                             </SelectTrigger>
@@ -106,31 +131,25 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
                                 ))}
                             </SelectContent>
                         </Select>
-                        <Button onClick={() => handlePrint('debt')} disabled={!selectedPartnerId || filteredClients.length === 0} className="w-full sm:w-auto">
+                        <Button onClick={() => handlePrint('debt')} disabled={!selectedDebtPartnerId || filteredIndebtedClients.length === 0} className="w-full sm:w-auto">
                             <Printer className="mr-2 h-4 w-4" />
                             Print Debt Report
                         </Button>
                     </div>
-                </CardContent>
-            </Card>
 
-            {selectedPartnerId && (
-                <div id="print-area-debt">
-                    <Card>
-                        <CardHeader>
-                             <div className="flex justify-between items-start">
+                     {selectedDebtPartnerId && (
+                        <div id="print-area-debt" className="pt-4">
+                             <div className="flex justify-between items-start border-b pb-4 mb-4">
                                 <div>
-                                    <CardTitle className="font-headline text-2xl">Debt Report: {selectedPartner?.name}</CardTitle>
-                                    <CardDescription>Generated on: {new Date().toLocaleDateString()}</CardDescription>
+                                    <h3 className="font-headline text-xl">Debt Report: {selectedDebtPartner?.name}</h3>
+                                    <p className="text-sm text-muted-foreground">Generated on: {new Date().toLocaleDateString()}</p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm text-muted-foreground">Total Clients with Debt</p>
-                                    <p className="text-2xl font-bold">{filteredClients.length}</p>
+                                    <p className="text-2xl font-bold">{filteredIndebtedClients.length}</p>
                                 </div>
                              </div>
-                        </CardHeader>
-                        <CardContent>
-                            {filteredClients.length > 0 ? (
+                            {filteredIndebtedClients.length > 0 ? (
                                 <>
                                 <div className="rounded-md border">
                                     <Table>
@@ -141,7 +160,7 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {filteredClients.map(client => (
+                                            {filteredIndebtedClients.map(client => (
                                                 <TableRow key={client.id}>
                                                     <TableCell className="font-medium">{client.name}</TableCell>
                                                     <TableCell className="text-right font-mono text-destructive">{formatCurrency(client.debt)}</TableCell>
@@ -164,65 +183,85 @@ export function ReportsClient({ partners, indebtedClients }: ReportClientProps) 
                                     <p className="text-sm text-muted-foreground">There are no clients with outstanding debt for this partner.</p>
                                 </div>
                             )}
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
 
-            <div id="print-area-periods">
-                <Card>
-                    <CardHeader>
-                        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                            <div>
-                                <CardTitle className="font-headline text-2xl">Partner Period Report</CardTitle>
-                                <CardDescription>Generated on: {new Date().toLocaleDateString()}</CardDescription>
+            <Card data-reports-ui>
+                <CardHeader>
+                    <CardTitle>Period History Report</CardTitle>
+                    <CardDescription>Select a partner company to view their complete billing period history.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                     <div className="flex flex-col sm:flex-row gap-4">
+                        <Select onValueChange={handleHistoryPartnerChange} value={selectedHistoryPartnerId}>
+                            <SelectTrigger className="w-full sm:w-[300px]">
+                                <SelectValue placeholder="Select a partner company" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {partners.map(partner => (
+                                    <SelectItem key={partner.id} value={partner.id}>
+                                        {partner.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Button onClick={() => handlePrint('periods')} disabled={!selectedHistoryPartnerId || periodHistory.length === 0} className="w-full sm:w-auto">
+                            <Printer className="mr-2 h-4 w-4" />
+                            Print Period History
+                        </Button>
+                    </div>
+
+                    <div id="print-area-periods" className="pt-4">
+                        {selectedHistoryPartnerId && (
+                           <>
+                           <div className="flex justify-between items-start border-b pb-4 mb-4">
+                                <div>
+                                    <h3 className="font-headline text-xl">Period History: {selectedHistoryPartner?.name}</h3>
+                                    <p className="text-sm text-muted-foreground">Generated on: {new Date().toLocaleDateString()}</p>
+                                </div>
                             </div>
-                            <Button onClick={() => handlePrint('periods')} className="w-full sm:w-auto print:hidden">
-                                <Printer className="mr-2 h-4 w-4" />
-                                Print Period Report
-                            </Button>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="rounded-md border">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Partner Name</TableHead>
-                                        <TableHead>Period Status</TableHead>
-                                        <TableHead>Start Date</TableHead>
-                                        <TableHead>End Date</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {partners.length > 0 ? partners.map(partner => {
-                                        const periodInfo = getPeriodInfo(partner.lastPeriodStartedAt);
-                                        return (
-                                            <TableRow key={partner.id}>
-                                                <TableCell className="font-medium">{partner.name}</TableCell>
-                                                <TableCell>
-                                                    <Badge variant={
-                                                        periodInfo.status === 'Active' ? 'default' :
-                                                        periodInfo.status === 'Expired' ? 'destructive' : 'secondary'
-                                                    }>
-                                                        {periodInfo.status}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell>{periodInfo.startDate || 'N/A'}</TableCell>
-                                                <TableCell>{periodInfo.endDate || 'N/A'}</TableCell>
+                           
+                           {isPending ? (
+                               <div className="flex items-center justify-center p-8">
+                                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                               </div>
+                           ) : periodHistory.length > 0 ? (
+                                <div className="rounded-md border">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Start Date</TableHead>
+                                                <TableHead>End Date</TableHead>
+                                                <TableHead className="text-center">Employees</TableHead>
+                                                <TableHead className="text-right">Sponsorship Amount</TableHead>
                                             </TableRow>
-                                        )
-                                    }) : (
-                                        <TableRow>
-                                            <TableCell colSpan={4} className="h-24 text-center">No partners found.</TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        </>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {periodHistory.map((period) => (
+                                                <TableRow key={period.id}>
+                                                    <TableCell>{formatDate(period.startDate)}</TableCell>
+                                                    <TableCell>{formatDate(period.endDate)}</TableCell>
+                                                    <TableCell className="text-center">{period.sponsoredEmployeesCount}</TableCell>
+                                                    <TableCell className="text-right font-mono">{formatCurrency(period.totalSharedAmount)}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center text-center p-8 bg-secondary rounded-lg">
+                                    <CalendarClock className="h-12 w-12 text-muted-foreground mb-4" />
+                                    <p className="font-semibold">No Period History Found</p>
+                                    <p className="text-sm text-muted-foreground">This partner does not have any recorded billing periods yet.</p>
+                                </div>
+                           )}
+                           </>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
     );
 }

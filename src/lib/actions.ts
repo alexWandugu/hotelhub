@@ -2,10 +2,11 @@
 
 import { transactionReportSummary } from '@/ai/flows/transaction-report-summary';
 import { z } from 'zod';
-import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc, getDoc, query, where, getDocs, writeBatch, runTransaction } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc, getDoc, query, where, getDocs, writeBatch, runTransaction, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import { revalidatePath } from 'next/cache';
-import type { Client, Partner, Transaction } from './types';
+import type { Client, Partner, Transaction, PeriodHistory } from './types';
+import { addDays } from 'date-fns';
 
 const ReportSchema = z.object({
   report: z.string().min(10, { message: 'Report must not be empty.' }),
@@ -177,6 +178,13 @@ export async function deletePartner(hotelId: string, partnerId: string) {
         transactionsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
+        
+        // Delete period history
+        const historyQuery = query(collection(db, `hotels/${hotelId}/partners/${partnerId}/periodHistory`));
+        const historySnapshot = await getDocs(historyQuery);
+        historySnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
 
         // Delete the partner
         const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
@@ -187,6 +195,7 @@ export async function deletePartner(hotelId: string, partnerId: string) {
         revalidatePath(`/dashboard/${hotelId}/partners`);
         revalidatePath(`/dashboard/${hotelId}/clients`);
         revalidatePath(`/dashboard/${hotelId}/transactions`);
+        revalidatePath(`/dashboard/${hotelId}/reports`);
     } catch (error: any) {
         console.error("Error deleting partner:", error);
         throw new Error(`Failed to delete partner: ${error.message}`);
@@ -391,6 +400,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     });
     
     revalidatePath(`/dashboard/${hotelId}/transactions`);
+    revalidatePath(`/dashboard/${hotelId}/new-transaction`);
     revalidatePath(`/dashboard/${hotelId}/clients`);
     revalidatePath(`/dashboard/${hotelId}/partners`);
     return { errors: null, message: "Transaction recorded successfully!" };
@@ -410,6 +420,7 @@ export async function flagTransaction(hotelId: string, transactionId: string) {
         await updateDoc(transactionRef, { status: 'flagged' });
         
         revalidatePath(`/dashboard/${hotelId}/transactions`);
+        revalidatePath(`/dashboard/${hotelId}/new-transaction`);
     } catch (error: any) {
         throw new Error(`Failed to flag transaction: ${error.message}`);
     }
@@ -452,6 +463,7 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
         });
 
         revalidatePath(`/dashboard/${hotelId}/transactions`);
+        revalidatePath(`/dashboard/${hotelId}/new-transaction`);
         revalidatePath(`/dashboard/${hotelId}/clients`);
         revalidatePath(`/dashboard/${hotelId}/partners`);
     } catch (error: any) {
@@ -477,8 +489,7 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
 
             if (partnerData.lastPeriodStartedAt) {
                 const startDate = partnerData.lastPeriodStartedAt.toDate();
-                const expiryDate = new Date(startDate);
-                expiryDate.setDate(startDate.getDate() + 30); // Period is 30 days
+                const expiryDate = addDays(startDate, 30); // Period is 30 days
 
                 if (new Date() < expiryDate) {
                     throw new Error(`Cannot start a new period. The current period expires on ${expiryDate.toLocaleDateString()}.`);
@@ -491,16 +502,26 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
                  throw new Error("Partner has no sponsored employees to start a new period for.");
             }
             
+            // Create historical record for the new period
+            const historyRef = doc(collection(db, `hotels/${hotelId}/partners/${partnerId}/periodHistory`));
+            const newStartDate = new Date();
+            const newEndDate = addDays(newStartDate, 30);
+            
+            transaction.set(historyRef, {
+                startDate: newStartDate,
+                endDate: newEndDate,
+                sponsoredEmployeesCount,
+                totalSharedAmount,
+            });
+
+            // Update partner with new period start date
             transaction.update(partnerRef, { lastPeriodStartedAt: serverTimestamp() });
 
+            // Update clients
             const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
             
             const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where("partnerId", "==", partnerId));
             const clientsSnapshot = await getDocs(clientsQuery);
-
-            if (clientsSnapshot.empty) {
-                return; // Not an error, just no clients to update.
-            }
 
             clientsSnapshot.docs.forEach(clientDoc => {
                 const clientRef = clientDoc.ref;
@@ -520,8 +541,39 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
         revalidatePath(`/dashboard/${hotelId}/partners`);
         revalidatePath(`/dashboard/${hotelId}/clients`);
         revalidatePath(`/dashboard/${hotelId}/transactions`);
+        revalidatePath(`/dashboard/${hotelId}/new-transaction`);
+        revalidatePath(`/dashboard/${hotelId}/reports`);
+
     } catch (error: any) {
         console.error("Error starting new period:", error);
         throw new Error(`Failed to start new period: ${error.message}`);
+    }
+}
+
+export async function getPartnerPeriodHistory(hotelId: string, partnerId: string): Promise<(Omit<PeriodHistory, 'startDate' | 'endDate'> & { id: string, startDate: string, endDate: string })[]> {
+    if (!hotelId || !partnerId) {
+        throw new Error("Hotel ID and Partner ID are required.");
+    }
+    try {
+        const historyQuery = query(
+            collection(db, `hotels/${hotelId}/partners/${partnerId}/periodHistory`),
+            orderBy('startDate', 'desc')
+        );
+        const snapshot = await getDocs(historyQuery);
+        if (snapshot.empty) {
+            return [];
+        }
+        return snapshot.docs.map(doc => {
+            const data = doc.data() as PeriodHistory;
+            return {
+                ...data,
+                id: doc.id,
+                startDate: data.startDate.toDate().toISOString(),
+                endDate: data.endDate.toDate().toISOString(),
+            };
+        });
+    } catch (error: any) {
+        console.error("Error fetching period history: ", error);
+        throw new Error("Failed to fetch period history.");
     }
 }

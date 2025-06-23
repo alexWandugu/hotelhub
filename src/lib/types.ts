@@ -42,3 +42,11 @@ export type Transaction = {
   createdAt: Timestamp;
   receiptNo: string;
 }
+
+export type PeriodHistory = {
+  id: string;
+  startDate: Timestamp;
+  endDate: Timestamp;
+  sponsoredEmployeesCount: number;
+  totalSharedAmount: number;
+}
