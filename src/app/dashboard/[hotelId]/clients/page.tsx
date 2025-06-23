@@ -44,16 +44,29 @@ export default async function ClientsPage({ params }: { params: { hotelId: strin
     notFound();
   }
   
-  const clientsData = await getClients(params.hotelId);
-  const partnersData = await getPartners(params.hotelId);
+  const [clientsData, partnersData] = await Promise.all([
+      getClients(params.hotelId),
+      getPartners(params.hotelId)
+  ]);
 
-  const clients = clientsData.map(client => ({
+  const serializedClients = clientsData.map(client => ({
     ...client,
-    // Convert timestamp to a serializable format (ISO string)
     createdAt: client.createdAt.toDate().toISOString(),
   }));
 
-  // We only need id and name for the dropdown, no need to serialize other fields
+  const serializedPartners = partnersData.map(partner => ({
+    ...partner,
+    createdAt: partner.createdAt.toDate().toISOString(),
+  }));
+
+  const totalSponsoredSlots = serializedPartners.reduce((acc, p) => acc + p.sponsoredEmployeesCount, 0);
+  const totalUsedSlots = serializedClients.length;
+
+  const partnersWithClients = serializedPartners.map(partner => ({
+      ...partner,
+      clients: serializedClients.filter(client => client.partnerId === partner.id)
+  })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   const partnersForDropdown = partnersData.map(p => ({ id: p.id, name: p.name }));
 
   return (
@@ -65,9 +78,11 @@ export default async function ClientsPage({ params }: { params: { hotelId: strin
         </p>
       </div>
       <ClientsClient 
-        initialClients={clients} 
-        partners={partnersForDropdown} 
-        hotelId={params.hotelId} 
+        partnersWithClients={partnersWithClients} 
+        partnersForDropdown={partnersForDropdown} 
+        hotelId={params.hotelId}
+        totalUsedSlots={totalUsedSlots}
+        totalSponsoredSlots={totalSponsoredSlots}
       />
     </div>
   );
