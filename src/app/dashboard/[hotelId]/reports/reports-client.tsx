@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useMemo, useTransition, useEffect } from 'react';
+import { useState, useMemo, useTransition } from 'react';
 import { getPartnerPeriodHistory } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import type { PeriodHistory } from '@/lib/types';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 import {
   Card,
@@ -29,7 +31,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Users, CalendarClock, Loader2 } from 'lucide-react';
+import { Download, Users, CalendarClock, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 type SerializablePeriodHistory = Omit<PeriodHistory, 'startDate' | 'endDate'> & {
@@ -55,6 +57,7 @@ interface ReportClientProps {
 export function ReportsClient({ hotelId, partners, initialIndebtedClients }: ReportClientProps) {
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
+    const [isDownloading, setIsDownloading] = useState(false);
     
     // Debt Report State
     const [selectedDebtPartnerId, setSelectedDebtPartnerId] = useState<string>('');
@@ -104,85 +107,69 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
     
     const formatDate = (dateString: string) => format(new Date(dateString), 'PP');
 
-    const handlePrint = (report: 'debt' | 'periods') => {
+    const handleDownloadPdf = async (report: 'debt' | 'periods') => {
         const printAreaId = report === 'debt' ? 'print-area-debt' : 'print-area-periods';
-        const printContents = document.getElementById(printAreaId)?.innerHTML;
+        const input = document.getElementById(printAreaId);
 
-        if (!printContents) {
+        if (!input) {
             toast({
                 variant: 'destructive',
                 title: 'Error',
-                description: 'Could not find the report content to print.',
+                description: 'Could not find report content.',
             });
             return;
         }
 
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'absolute';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = 'none';
-        document.body.appendChild(iframe);
+        setIsDownloading(true);
+        toast({
+            title: 'Generating PDF...',
+            description: 'Your report is being prepared for download.',
+        });
 
-        const doc = iframe.contentWindow?.document;
-        if (!doc) {
-            document.body.removeChild(iframe);
-            return;
+        try {
+            const canvas = await html2canvas(input, { scale: 2, useCORS: true });
+            const imgData = canvas.toDataURL('image/png');
+            
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'pt',
+                format: 'a4',
+            });
+
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const ratio = canvasWidth / canvasHeight;
+
+            let imgWidth = pdfWidth - 40; // with margin
+            let imgHeight = imgWidth / ratio;
+            
+            if (imgHeight > pdfHeight - 40) {
+                imgHeight = pdfHeight - 40;
+                imgWidth = imgHeight * ratio;
+            }
+
+            const x = (pdfWidth - imgWidth) / 2;
+            const y = (pdfHeight - imgHeight) / 2;
+            
+            pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+
+            const partnerName = report === 'debt' ? selectedDebtPartner?.name : selectedHistoryPartner?.name;
+            const fileName = `${report}-report-${partnerName?.replace(/\s+/g, '-') || 'general'}-${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
+            
+            pdf.save(fileName);
+
+        } catch (error) {
+            console.error("Error generating PDF: ", error);
+            toast({
+                variant: 'destructive',
+                title: 'PDF Generation Failed',
+                description: 'An error occurred while creating the PDF.',
+            });
+        } finally {
+            setIsDownloading(false);
         }
-        
-        doc.open();
-        doc.write(`
-        <html>
-            <head>
-            <title>Print Report</title>
-            <style>
-                @page { size: A4; margin: 1.5cm; }
-                body { font-family: Inter, -apple-system, sans-serif; line-height: 1.5; color: #111827; }
-                table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-                th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
-                thead th { background-color: #f9fafb; }
-                h3 { font-family: Poppins, sans-serif; font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
-                p { margin-top: 0; }
-                .text-muted-foreground { color: #6b7280; }
-                .text-sm { font-size: 0.875rem; }
-                .border-b { border-bottom: 1px solid #e5e7eb; }
-                .pb-4 { padding-bottom: 1rem; }
-                .mb-4 { margin-bottom: 1rem; }
-                .flex { display: flex; }
-                .justify-between { justify-content: space-between; }
-                .items-start { align-items: flex-start; }
-                .text-right { text-align: right; }
-                .font-mono { font-family: ui-monospace, Menlo, Monaco, monospace; }
-                .text-destructive { color: #dc2626; }
-                .font-medium { font-weight: 500; }
-                .pt-4 { padding-top: 1rem; }
-                .font-semibold { font-weight: 600; }
-                .font-bold { font-weight: 700; }
-                .text-lg { font-size: 1.125rem; }
-                .text-xl { font-size: 1.25rem; }
-                .text-2xl { font-size: 1.5rem; }
-                .bg-secondary { background-color: #f3f4f6; }
-                .rounded-lg { border-radius: 0.5rem; }
-                .p-8 { padding: 2rem; }
-                .items-center { align-items: center; }
-                .justify-center { justify-content: center; }
-                .text-center { text-align: center; }
-                svg { display: none; }
-            </style>
-            </head>
-            <body>
-            ${printContents}
-            </body>
-        </html>
-        `);
-        doc.close();
-        
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-
-        setTimeout(() => {
-            document.body.removeChild(iframe);
-        }, 500);
     };
 
 
@@ -191,7 +178,7 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
             <Card>
                 <CardHeader>
                     <CardTitle>Debt Report Generator</CardTitle>
-                    <CardDescription>Select a partner company to view and print a report of clients with outstanding debt.</CardDescription>
+                    <CardDescription>Select a partner company to view and download a report of clients with outstanding debt.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex flex-col sm:flex-row gap-4">
@@ -207,17 +194,17 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
                                 ))}
                             </SelectContent>
                         </Select>
-                        <Button onClick={() => handlePrint('debt')} disabled={!selectedDebtPartnerId || filteredIndebtedClients.length === 0} className="w-full sm:w-auto">
-                            <Printer className="mr-2 h-4 w-4" />
-                            Print Debt Report
+                        <Button onClick={() => handleDownloadPdf('debt')} disabled={isDownloading || !selectedDebtPartnerId || filteredIndebtedClients.length === 0} className="w-full sm:w-auto">
+                            {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                            Download PDF
                         </Button>
                     </div>
 
                      {selectedDebtPartnerId && (
-                        <div id="print-area-debt" className="pt-4">
+                        <div id="print-area-debt" className="pt-4 bg-white p-4">
                              <div className="flex justify-between items-start border-b pb-4 mb-4">
                                 <div>
-                                    <h3 className="font-headline text-xl">Debt Report: {selectedDebtPartner?.name}</h3>
+                                    <h3 className="font-headline text-xl font-bold">Debt Report: {selectedDebtPartner?.name}</h3>
                                     <p className="text-sm text-muted-foreground">Generated on: {new Date().toLocaleDateString()}</p>
                                 </div>
                                 <div className="text-right">
@@ -267,7 +254,7 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
             <Card>
                 <CardHeader>
                     <CardTitle>Period History Report</CardTitle>
-                    <CardDescription>Select a partner company to view their complete billing period history.</CardDescription>
+                    <CardDescription>Select a partner company to download their complete billing period history.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                      <div className="flex flex-col sm:flex-row gap-4">
@@ -283,18 +270,18 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
                                 ))}
                             </SelectContent>
                         </Select>
-                        <Button onClick={() => handlePrint('periods')} disabled={!selectedHistoryPartnerId || periodHistory.length === 0} className="w-full sm:w-auto">
-                            <Printer className="mr-2 h-4 w-4" />
-                            Print Period History
+                        <Button onClick={() => handleDownloadPdf('periods')} disabled={isDownloading || !selectedHistoryPartnerId || periodHistory.length === 0} className="w-full sm:w-auto">
+                            {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                            Download PDF
                         </Button>
                     </div>
 
-                    <div id="print-area-periods" className="pt-4">
-                        {selectedHistoryPartnerId && (
+                    {selectedHistoryPartnerId && (
+                        <div id="print-area-periods" className="pt-4 bg-white p-4">
                            <>
                            <div className="flex justify-between items-start border-b pb-4 mb-4">
                                 <div>
-                                    <h3 className="font-headline text-xl">Period History: {selectedHistoryPartner?.name}</h3>
+                                    <h3 className="font-headline text-xl font-bold">Period History: {selectedHistoryPartner?.name}</h3>
                                     <p className="text-sm text-muted-foreground">Generated on: {new Date().toLocaleDateString()}</p>
                                 </div>
                             </div>
@@ -334,8 +321,8 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
                                 </div>
                            )}
                            </>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>
