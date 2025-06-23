@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useParams } from 'next/navigation';
 import {
   AreaChart,
   Bot,
@@ -39,13 +39,12 @@ import { Logo } from '@/components/logo';
 
 export default function DashboardLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: { hotelId: string };
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const params = useParams<{ hotelId: string }>();
 
   const navItems = [
     { href: `/dashboard/${params.hotelId}`, icon: AreaChart, label: 'Dashboard' },
