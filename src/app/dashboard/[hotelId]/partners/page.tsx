@@ -27,7 +27,13 @@ export default async function PartnersPage({ params }: { params: { hotelId: stri
   if (!params.hotelId) {
     notFound();
   }
-  const partners = await getPartners(params.hotelId);
+  const partnersData = await getPartners(params.hotelId);
+
+  const partners = partnersData.map(partner => ({
+    ...partner,
+    // Convert timestamp to a serializable format (ISO string)
+    createdAt: partner.createdAt.toDate().toISOString(),
+  }));
 
   return (
     <div className="space-y-8">

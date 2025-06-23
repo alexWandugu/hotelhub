@@ -37,11 +37,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Building2, PlusCircle } from 'lucide-react';
-import { Timestamp } from 'firebase/firestore';
 
+
+// The data from server component has createdAt serialized to a string
+type SerializablePartner = Omit<Partner, 'createdAt'> & {
+    createdAt: string;
+};
 
 interface PartnersClientProps {
-    initialPartners: Partner[];
+    initialPartners: SerializablePartner[];
     hotelId: string;
 }
 
@@ -81,9 +85,9 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
         }
     }, [state, toast]);
     
-    const formatDate = (timestamp: Timestamp | Date) => {
-        if (!timestamp) return 'N/A';
-        const date = timestamp instanceof Timestamp ? timestamp.toDate() : timestamp;
+    const formatDate = (dateString: string) => {
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
         return format(date, 'PPP');
     };
 
