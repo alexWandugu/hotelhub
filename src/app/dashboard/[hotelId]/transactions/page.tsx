@@ -1,35 +1,69 @@
-import { transactions, Transaction } from "@/lib/data";
-import { DataTable } from "./data-table";
-import { columns } from "./columns";
-import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Transaction, Client } from "@/lib/types";
+import { TransactionsClient } from './transactions-client';
+import { notFound } from 'next/navigation';
 
-async function getData(): Promise<Transaction[]> {
-  // Fetch data from your API here.
-  return transactions;
+async function getTransactions(hotelId: string): Promise<Transaction[]> {
+    try {
+        const transactionsQuery = query(
+            collection(db, `hotels/${hotelId}/transactions`),
+            orderBy('createdAt', 'desc')
+        );
+        const querySnapshot = await getDocs(transactionsQuery);
+        return querySnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        })) as Transaction[];
+    } catch (error) {
+        console.error("Failed to fetch transactions:", error);
+        return [];
+    }
 }
 
-export default async function TransactionsPage() {
-  const data = await getData();
+async function getClients(hotelId: string): Promise<Client[]> {
+    try {
+        const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), orderBy('name', 'asc'));
+        const querySnapshot = await getDocs(clientsQuery);
+        return querySnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        })) as Client[];
+    } catch (error) {
+        console.error("Failed to fetch clients:", error);
+        return [];
+    }
+}
+
+export default async function TransactionsPage({ params }: { params: { hotelId: string } }) {
+  if (!params.hotelId) {
+    notFound();
+  }
+
+  const [transactionsData, clientsData] = await Promise.all([
+    getTransactions(params.hotelId),
+    getClients(params.hotelId)
+  ]);
+
+  const transactions = transactionsData.map(t => ({
+    ...t,
+    createdAt: t.createdAt.toDate().toISOString(),
+  }));
+
+  const clientsForDropdown = clientsData.map(c => ({
+      id: c.id, 
+      name: c.name,
+      partnerName: c.partnerName,
+      availableAllowance: c.allowance - c.debt
+  }));
 
   return (
     <div className="space-y-8">
-       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold font-headline">Transactions</h1>
-            <p className="text-muted-foreground">
-              View and manage all client transactions.
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              New Transaction
-            </Button>
-          </div>
-        </div>
-      
-      <DataTable columns={columns} data={data} />
+      <TransactionsClient 
+        initialTransactions={transactions} 
+        clients={clientsForDropdown} 
+        hotelId={params.hotelId}
+      />
     </div>
   );
 }

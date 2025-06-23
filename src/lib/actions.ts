@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc, getDoc, query, where, getDocs, writeBatch, runTransaction } from 'firebase/firestore';
 import { db } from './firebase';
 import { revalidatePath } from 'next/cache';
-import type { Client, Partner } from './types';
+import type { Client, Partner, Transaction } from './types';
+import { auth } from '@/lib/firebase';
 
 const ReportSchema = z.object({
   report: z.string().min(10, { message: 'Report must not be empty.' }),
@@ -242,6 +243,7 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
       partnerName,
       allowance: allowance,
       status: 'active',
+      debt: 0,
       createdAt: serverTimestamp(),
     });
 
@@ -297,5 +299,117 @@ export async function deleteClient(hotelId: string, clientId: string) {
     } catch (error: any) {
         console.error("Error deleting client:", error);
         throw new Error(`Failed to delete client: ${error.message}`);
+    }
+}
+
+
+const TransactionSchema = z.object({
+  client: z.string().min(1, { message: "You must select a client." }),
+  amount: z.coerce.number().positive({ message: "Amount must be greater than zero." }),
+});
+
+export async function addTransaction(hotelId: string, prevState: any, formData: FormData) {
+  const user = auth.currentUser;
+  if (!user) {
+    return { errors: { _form: ["You must be logged in to perform this action."] }, message: "Authentication failed." };
+  }
+
+  const validatedFields = TransactionSchema.safeParse({
+    client: formData.get('client'),
+    amount: formData.get('amount'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Validation failed. Please check the form.",
+    };
+  }
+
+  const { client: clientId, amount } = validatedFields.data;
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const clientRef = doc(db, `hotels/${hotelId}/clients`, clientId);
+      const clientSnap = await transaction.get(clientRef);
+
+      if (!clientSnap.exists()) {
+        throw new Error("Selected client could not be found.");
+      }
+
+      const clientData = clientSnap.data() as Client;
+      const availableAllowance = clientData.allowance - clientData.debt;
+
+      const newDebt = clientData.debt + amount;
+      const transactionStatus = amount > availableAllowance ? 'flagged' : 'completed';
+
+      transaction.update(clientRef, { debt: newDebt });
+      
+      const newTransactionRef = doc(collection(db, `hotels/${hotelId}/transactions`));
+      transaction.set(newTransactionRef, {
+        clientId: clientId,
+        clientName: clientData.name,
+        partnerName: clientData.partnerName,
+        amount: amount,
+        status: transactionStatus,
+        createdAt: serverTimestamp(),
+        recordedBy: user.email || 'N/A',
+      });
+    });
+    
+    revalidatePath(`/dashboard/${hotelId}/transactions`);
+    revalidatePath(`/dashboard/${hotelId}/clients`);
+    return { errors: null, message: "Transaction recorded successfully!" };
+
+  } catch (error: any) {
+    return { errors: { _form: [error.message] }, message: `Failed to record transaction.` };
+  }
+}
+
+export async function flagTransaction(hotelId: string, transactionId: string) {
+    if (!hotelId || !transactionId) {
+        throw new Error('Invalid arguments provided.');
+    }
+
+    try {
+        const transactionRef = doc(db, 'hotels', hotelId, 'transactions', transactionId);
+        await updateDoc(transactionRef, { status: 'flagged' });
+        
+        revalidatePath(`/dashboard/${hotelId}/transactions`);
+    } catch (error: any) {
+        throw new Error(`Failed to flag transaction: ${error.message}`);
+    }
+}
+
+export async function deleteTransaction(hotelId: string, transactionId: string) {
+    if (!hotelId || !transactionId) {
+        throw new Error('Invalid arguments provided.');
+    }
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            const transactionRef = doc(db, 'hotels', hotelId, 'transactions', transactionId);
+            const transactionSnap = await transaction.get(transactionRef);
+
+            if (!transactionSnap.exists()) {
+                throw new Error("Transaction not found.");
+            }
+            const transactionData = transactionSnap.data() as Transaction;
+            const clientRef = doc(db, `hotels/${hotelId}/clients`, transactionData.clientId);
+            const clientSnap = await transaction.get(clientRef);
+
+            if (clientSnap.exists()) {
+                const clientData = clientSnap.data() as Client;
+                const newDebt = clientData.debt - transactionData.amount;
+                transaction.update(clientRef, { debt: newDebt < 0 ? 0 : newDebt });
+            }
+
+            transaction.delete(transactionRef);
+        });
+
+        revalidatePath(`/dashboard/${hotelId}/transactions`);
+        revalidatePath(`/dashboard/${hotelId}/clients`);
+    } catch (error: any) {
+        throw new Error(`Failed to delete transaction: ${error.message}`);
     }
 }

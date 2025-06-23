@@ -309,8 +309,8 @@ export function ClientsClient({
                                                     <TableHeader>
                                                         <TableRow>
                                                             <TableHead>Client Name</TableHead>
-                                                            <TableHead>Status</TableHead>
-                                                            <TableHead className="text-right">Allowance</TableHead>
+                                                            <TableHead>Available Allowance</TableHead>
+                                                            <TableHead className="text-right">Debt</TableHead>
                                                             <TableHead>Date Added</TableHead>
                                                             <TableHead className="text-right">Actions</TableHead>
                                                         </TableRow>
@@ -319,12 +319,8 @@ export function ClientsClient({
                                                         {partner.clients.map((client) => (
                                                             <TableRow key={client.id}>
                                                                 <TableCell className="font-medium">{client.name}</TableCell>
-                                                                <TableCell>
-                                                                    <Badge variant={client.status === 'active' ? 'default' : 'destructive'}>
-                                                                        {client.status}
-                                                                    </Badge>
-                                                                </TableCell>
-                                                                <TableCell className="text-right font-mono">{formatCurrency(client.allowance)}</TableCell>
+                                                                <TableCell className="font-mono">{formatCurrency(client.allowance - client.debt)}</TableCell>
+                                                                <TableCell className="text-right font-mono text-destructive">{formatCurrency(client.debt)}</TableCell>
                                                                 <TableCell>{formatDate(client.createdAt)}</TableCell>
                                                                 <TableCell className="text-right">
                                                                     <DropdownMenu>

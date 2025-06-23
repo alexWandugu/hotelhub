@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { Transaction } from "@/lib/data";
+import type { Transaction } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,80 +11,95 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, ArrowUpDown } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
+import { MoreHorizontal, ArrowUpDown, Trash2, ShieldAlert } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { flagTransaction, deleteTransaction } from "@/lib/actions";
+import { useParams } from "next/navigation";
+import { format } from 'date-fns';
 
-export const columns: ColumnDef<Transaction>[] = [
-  {
-    id: "select",
-    header: ({ table }) => (
-      <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && "indeterminate")
+const ActionCell = ({ row }: { row: any }) => {
+    const { toast } = useToast();
+    const params = useParams<{ hotelId: string }>();
+    const transaction = row.original;
+
+    const handleFlag = async () => {
+        try {
+            await flagTransaction(params.hotelId, transaction.id);
+            toast({ title: "Transaction Flagged", description: "The transaction has been marked for review." });
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Action Failed", description: error.message });
         }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
-      />
-    ),
-    cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
-      />
-    ),
-    enableSorting: false,
-    enableHiding: false,
-  },
-  {
-    accessorKey: "id",
-    header: "Transaction ID",
-  },
+    };
+
+    const handleDelete = async () => {
+        try {
+            await deleteTransaction(params.hotelId, transaction.id);
+            toast({ title: "Transaction Deleted", description: "The transaction and its associated debt have been removed." });
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Deletion Failed", description: error.message });
+        }
+    };
+
+    return (
+        <div className="text-right">
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="h-8 w-8 p-0">
+                        <span className="sr-only">Open menu</span>
+                        <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                    {transaction.status !== 'flagged' &&
+                        <DropdownMenuItem onClick={handleFlag}>
+                            <ShieldAlert className="mr-2 h-4 w-4" />
+                            Flag for review
+                        </DropdownMenuItem>
+                    }
+                    <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    );
+}
+
+export const columns: ColumnDef<Transaction & { createdAt: string }>[] = [
   {
     accessorKey: "clientName",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Client Name
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      );
-    },
+    header: ({ column }) => (
+      <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+        Client Name <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
   },
   {
-    accessorKey: "partner",
+    accessorKey: "partnerName",
     header: "Partner",
   },
   {
-    accessorKey: "date",
+    accessorKey: "createdAt",
     header: "Date",
+    cell: ({ row }) => format(new Date(row.getValue("createdAt")), 'PPp')
   },
   {
     accessorKey: "amount",
-    header: ({ column }) => {
-      return (
-        <div className="text-right">
-            <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-            Amount
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-        </div>
-      );
-    },
+    header: ({ column }) => (
+      <div className="text-right">
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Amount <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+    ),
     cell: ({ row }) => {
       const amount = parseFloat(row.getValue("amount"));
-      const formatted = new Intl.NumberFormat("en-US", {
+      const formatted = new Intl.NumberFormat("en-KE", {
         style: "currency",
-        currency: "USD",
+        currency: "KES",
       }).format(amount);
-
       return <div className="text-right font-medium">{formatted}</div>;
     },
   },
@@ -94,41 +109,14 @@ export const columns: ColumnDef<Transaction>[] = [
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       const variant =
-        status === "Completed"
-          ? "default"
-          : status === "Flagged"
-          ? "destructive"
-          : "secondary";
-      return <Badge variant={variant}>{status}</Badge>;
+        status === "completed" ? "default"
+        : status === "flagged" ? "destructive"
+        : "secondary";
+      return <Badge variant={variant} className="capitalize">{status}</Badge>;
     },
   },
   {
     id: "actions",
-    cell: ({ row }) => {
-      const transaction = row.original;
-
-      return (
-        <div className="text-right">
-            <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuItem
-                onClick={() => navigator.clipboard.writeText(transaction.id)}
-                >
-                Copy transaction ID
-                </DropdownMenuItem>
-                <DropdownMenuItem>View client</DropdownMenuItem>
-                <DropdownMenuItem>Flag for review</DropdownMenuItem>
-            </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ActionCell,
   },
 ];
