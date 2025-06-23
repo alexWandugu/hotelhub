@@ -63,11 +63,11 @@ interface TransactionsClientProps {
 }
 
 // Submit Button Component
-function SubmitButton({ disabled, text }: { disabled: boolean; text: string }) {
+function SubmitButton({ disabled }: { disabled: boolean }) {
     const { pending } = useFormStatus();
     return (
         <Button type="submit" disabled={pending || disabled}>
-            {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</> : text}
+            {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</> : 'Record Transaction'}
         </Button>
     );
 }
@@ -114,19 +114,10 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     const selectedClient = useMemo(() => clients.find(c => c.id === selectedClientId), [clients, selectedClientId]);
     const availableAllowance = useMemo(() => selectedClient ? selectedClient.allowance - selectedClient.debt : 0, [selectedClient]);
     const numericAmount = parseFloat(transactionAmount) || 0;
-    const newDebt = numericAmount > availableAllowance ? numericAmount - availableAllowance : 0;
     
-    // UI logic for button state and text
-    const isOverHardLimit = newDebt > 300;
-    let buttonText = "Record Transaction";
-    let isButtonDisabled = !selectedClientId || numericAmount <= 0;
-
-    if (newDebt > 0) {
-        buttonText = "Allow Transaction";
-        if (isOverHardLimit) {
-            isButtonDisabled = true;
-        }
-    }
+    // UI logic for button state
+    const isAmountInvalid = availableAllowance > 0 && numericAmount > availableAllowance;
+    const isButtonDisabled = !selectedClientId || numericAmount <= 0 || isAmountInvalid;
 
     // Get unique partners from the clients list
     const partners = useMemo(() => {
@@ -158,7 +149,6 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
         setComboboxOpen(false);
     }
     
-    // Disable amount field if client has debt > 0
     const isAmountDisabled = !selectedClientId;
 
     return (
@@ -269,24 +259,17 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                     {state?.errors?.amount && <p className="text-sm text-destructive">{state.errors.amount[0]}</p>}
                                 </div>
 
-                                {newDebt > 0 && (
-                                    <div className="space-y-2">
-                                        <Label htmlFor="newDebt" className="text-destructive">New Debt Incurred</Label>
-                                        <Input id="newDebt" name="newDebt" value={formatCurrency(newDebt)} disabled className="font-bold text-destructive border-destructive" />
-                                    </div>
-                                )}
-
-                                {isOverHardLimit && (
+                                {isAmountInvalid && (
                                     <Alert variant="destructive">
                                         <AlertTriangle className="h-4 w-4" />
                                         <AlertTitle>Allowance Limit Exceeded</AlertTitle>
-                                        <AlertDescription>The new debt exceeds the KES 300 limit. This transaction cannot be processed.</AlertDescription>
+                                        <AlertDescription>The transaction amount exceeds the client's available allowance of {formatCurrency(availableAllowance)}.</AlertDescription>
                                     </Alert>
                                 )}
 
                                 <DialogFooter className="pt-4">
                                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                    <SubmitButton disabled={isButtonDisabled} text={buttonText} />
+                                    <SubmitButton disabled={isButtonDisabled} />
                                 </DialogFooter>
                             </form>
                         )}

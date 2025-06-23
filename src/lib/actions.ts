@@ -127,7 +127,7 @@ export async function updatePartner(hotelId: string, partnerId: string, prevStat
             const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
             
             const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', '==', partnerId));
-            const clientsSnapshot = await transaction.get(clientsQuery);
+            const clientsSnapshot = await getDocs(clientsQuery);
             const existingClientsCount = clientsSnapshot.size;
 
             if (sponsoredEmployeesCount < existingClientsCount) {
@@ -340,18 +340,13 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
 
       const clientData = clientSnap.data() as Client;
       const availableAllowance = clientData.allowance - clientData.debt;
-      const newDebtAmount = amount - availableAllowance;
 
-      if (newDebtAmount > 300) {
-        throw new Error(`Transaction failed: The amount exceeds the client's available allowance by more than the KES 300 limit.`);
+      if (amount > availableAllowance) {
+        throw new Error(`Transaction amount of ${new Intl.NumberFormat('en-KE', {style: 'currency', currency: 'KES'}).format(amount)} exceeds the available allowance of ${new Intl.NumberFormat('en-KE', {style: 'currency', currency: 'KES'}).format(availableAllowance)}.`);
       }
 
-      // The new total debt is the old debt plus the entire transaction amount.
-      // The logic here is that the 'allowance' resets monthly, but debt accumulates.
       const newTotalDebt = clientData.debt + amount;
       
-      const transactionStatus = newDebtAmount > 0 ? 'flagged' : 'completed';
-
       transaction.update(clientRef, { debt: newTotalDebt });
       
       const newTransactionRef = doc(collection(db, `hotels/${hotelId}/transactions`));
@@ -361,7 +356,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         partnerId: clientData.partnerId,
         partnerName: clientData.partnerName,
         amount: amount,
-        status: transactionStatus,
+        status: 'completed',
         createdAt: serverTimestamp(),
         receiptNo: receiptNo,
       });
