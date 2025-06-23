@@ -137,7 +137,7 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="totalSharedAmount" className="text-right text-sm">
-                                    Shared Amount
+                                    Shared Amount (KES)
                                 </Label>
                                 <Input id="totalSharedAmount" name="totalSharedAmount" type="number" placeholder="0.00" step="0.01" className="col-span-3" required min="0" />
                                 {state?.errors?.totalSharedAmount && <p className="col-span-4 text-sm text-destructive text-right -mt-2">{state.errors.totalSharedAmount[0]}</p>}

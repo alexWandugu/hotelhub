@@ -2,9 +2,10 @@
 
 import { transactionReportSummary } from '@/ai/flows/transaction-report-summary';
 import { z } from 'zod';
-import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { revalidatePath } from 'next/cache';
+import type { Client, Partner } from './types';
 
 const ReportSchema = z.object({
   report: z.string().min(10, { message: 'Report must not be empty.' }),
@@ -135,6 +136,42 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
   }
 
   try {
+     // 1. Get partner data for validation
+    const partnerRef = doc(db, `hotels/${hotelId}/partners`, partnerId);
+    const partnerSnap = await getDoc(partnerRef);
+    if (!partnerSnap.exists()) {
+      return { errors: { partner: ['Selected partner not found.'] }, message: "Validation failed." };
+    }
+    const partnerData = partnerSnap.data() as Partner;
+
+    // 2. Get existing clients for this partner
+    const clientsQuery = query(
+      collection(db, `hotels/${hotelId}/clients`),
+      where('partnerId', '==', partnerId)
+    );
+    const clientsSnapshot = await getDocs(clientsQuery);
+    const existingClients = clientsSnapshot.docs.map(doc => doc.data() as Client);
+
+    // 3. Perform validation checks
+    // 3a. Employee count validation
+    if (existingClients.length >= partnerData.sponsoredEmployeesCount) {
+      return {
+        errors: { _form: [`Cannot add new client. The employee limit (${partnerData.sponsoredEmployeesCount}) for ${partnerName} has been reached.`] },
+        message: 'Validation failed.'
+      };
+    }
+
+    // 3b. Allowance validation
+    const currentTotalAllowance = existingClients.reduce((sum, client) => sum + client.allowance, 0);
+    const newAllowance = validatedFields.data.allowance;
+    if (currentTotalAllowance + newAllowance > partnerData.totalSharedAmount) {
+       return {
+        errors: { _form: [`Cannot add new client. Adding this allowance would exceed the company's shared amount. Remaining: KES ${(partnerData.totalSharedAmount - currentTotalAllowance).toFixed(2)}`] },
+        message: 'Validation failed.'
+      };
+    }
+
+    // 4. If validation passes, add the new client
     await addDoc(collection(db, 'hotels', hotelId, 'clients'), {
       name: validatedFields.data.name,
       partnerId,
@@ -147,6 +184,7 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
     revalidatePath(`/dashboard/${hotelId}/clients`);
     return { errors: null, message: 'Client added successfully!' };
   } catch (error) {
+    console.error('Error adding client:', error);
     return { errors: null, message: `Database Error: Failed to add client.` };
   }
 }

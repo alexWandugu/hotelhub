@@ -39,11 +39,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Users, PlusCircle } from 'lucide-react';
+import { Users, PlusCircle, AlertTriangle } from 'lucide-react';
 
 type SerializableClient = Omit<Client, 'createdAt'> & {
     createdAt: string;
@@ -75,11 +76,14 @@ export function ClientsClient({ initialClients, partners, hotelId }: ClientsClie
     useEffect(() => {
         if (state.message) {
             if (state.errors) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Error',
-                    description: state.message,
-                });
+                 // Don't show a toast for form-specific errors, they are displayed in the dialog
+                if(!state.errors._form) {
+                    toast({
+                        variant: 'destructive',
+                        title: 'Error',
+                        description: state.message,
+                    });
+                }
             } else {
                 toast({
                     title: 'Success!',
@@ -87,9 +91,11 @@ export function ClientsClient({ initialClients, partners, hotelId }: ClientsClie
                 });
                 setOpen(false);
                 formRef.current?.reset();
+                 // Reset form state after successful submission
+                dispatch({ errors: null, message: null });
             }
         }
-    }, [state, toast]);
+    }, [state, toast, dispatch]);
     
     const formatDate = (dateString: string) => {
         if (!dateString) return 'N/A';
@@ -128,6 +134,15 @@ export function ClientsClient({ initialClients, partners, hotelId }: ClientsClie
                         </DialogHeader>
                         {partners.length > 0 && (
                             <form action={dispatch} ref={formRef} className="space-y-4 pt-4">
+                                {state?.errors?._form && (
+                                    <Alert variant="destructive">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        <AlertTitle>Validation Error</AlertTitle>
+                                        <AlertDescription>
+                                            {state.errors._form[0]}
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
                                 <div className="space-y-2">
                                     <Label htmlFor="name">Client Name</Label>
                                     <Input id="name" name="name" required />
