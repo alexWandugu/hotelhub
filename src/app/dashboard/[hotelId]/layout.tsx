@@ -75,14 +75,11 @@ export default function DashboardLayout({
           setIsAuthorized(true);
 
           // Role-based route protection
-          const adminOnlyRoutes = ['/partners', '/clients', '/users'];
+          const adminOnlyRoutes = ['/partners', '/clients', '/users', '/transactions'];
           const currentRoute = pathname.replace(`/dashboard/${params.hotelId}`, '') || '/';
           
-          if (role === 'member' && (adminOnlyRoutes.includes(currentRoute) || (currentRoute === '/' && pathname.endsWith('/')))) {
-            // Allow dashboard access, but redirect from others
-            if (currentRoute !== '/') {
-               router.replace(`/dashboard/${params.hotelId}`);
-            }
+          if (role === 'member' && adminOnlyRoutes.some(route => currentRoute.startsWith(route) && route !== '/')) {
+             router.replace(`/dashboard/${params.hotelId}`);
           }
 
         } else {
@@ -192,7 +189,7 @@ export default function DashboardLayout({
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-9 w-9">
                   <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="@shadcn" />
-                  <AvatarFallback>{userRole?.charAt(0).toUpperCase()}</AvatarFallback>
+                  <AvatarFallback>{userRole ? userRole.charAt(0).toUpperCase() : 'U'}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
