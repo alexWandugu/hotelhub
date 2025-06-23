@@ -2,7 +2,7 @@
 
 import { transactionReportSummary } from '@/ai/flows/transaction-report-summary';
 import { z } from 'zod';
-import { doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { revalidatePath } from 'next/cache';
 
@@ -59,5 +59,40 @@ export async function manageUserStatus(
   } catch (error: any) {
     console.error("Error managing user status:", error);
     throw new Error(`Failed to ${action} user: ${error.message}`);
+  }
+}
+
+const AddPartnerSchema = z.object({
+  name: z.string().min(2, { message: "Partner name must be at least 2 characters." }),
+});
+
+export async function addPartner(hotelId: string, prevState: any, formData: FormData) {
+  const validatedFields = AddPartnerSchema.safeParse({
+    name: formData.get('name'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Validation failed. Please check the form.",
+    };
+  }
+  
+  if (!hotelId) {
+      return { errors: null, message: "An unexpected error occurred: Hotel ID is missing." };
+  }
+
+  try {
+    await addDoc(collection(db, 'hotels', hotelId, 'partners'), {
+      name: validatedFields.data.name,
+      status: 'active',
+      createdAt: serverTimestamp(),
+    });
+    
+    revalidatePath(`/dashboard/${hotelId}/partners`);
+    return { errors: null, message: 'Partner added successfully!' };
+
+  } catch (error) {
+    return { errors: null, message: `Database Error: Failed to add partner.` };
   }
 }

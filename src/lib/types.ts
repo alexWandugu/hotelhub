@@ -8,3 +8,10 @@ export type HotelUser = {
   joinedAt?: Timestamp;
   requestedAt?: Timestamp;
 };
+
+export type Partner = {
+  id: string;
+  name: string;
+  status: 'active' | 'inactive';
+  createdAt: Timestamp;
+};

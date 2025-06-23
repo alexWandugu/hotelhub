@@ -1,7 +1,34 @@
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Building2 } from "lucide-react";
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { PartnersClient } from './partners-client';
+import type { Partner } from '@/lib/types';
+import { notFound } from 'next/navigation';
 
-export default function PartnersPage() {
+async function getPartners(hotelId: string): Promise<Partner[]> {
+    try {
+        const partnersQuery = query(
+            collection(db, `hotels/${hotelId}/partners`),
+            orderBy('createdAt', 'desc')
+        );
+        const querySnapshot = await getDocs(partnersQuery);
+        const partners = querySnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        })) as Partner[];
+        return partners;
+    } catch (error) {
+        console.error("Failed to fetch partners:", error);
+        return [];
+    }
+}
+
+
+export default async function PartnersPage({ params }: { params: { hotelId: string } }) {
+  if (!params.hotelId) {
+    notFound();
+  }
+  const partners = await getPartners(params.hotelId);
+
   return (
     <div className="space-y-8">
       <div>
@@ -10,19 +37,7 @@ export default function PartnersPage() {
           Manage your partner companies.
         </p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Coming Soon</CardTitle>
-          <CardDescription>This feature is currently under construction.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center text-center p-8 md:p-16 bg-secondary rounded-lg">
-              <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="font-semibold">Partner Management</p>
-              <p className="text-sm text-muted-foreground">Functionality to add, view, and manage partner companies will be available here.</p>
-          </div>
-        </CardContent>
-      </Card>
+      <PartnersClient initialPartners={partners} hotelId={params.hotelId} />
     </div>
   );
 }
