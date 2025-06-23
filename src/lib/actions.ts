@@ -258,7 +258,6 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
 
     revalidatePath(`/dashboard/${hotelId}/clients`);
     revalidatePath(`/dashboard/${hotelId}/partners`);
-    revalidatePath(`/dashboard/${hotelId}/transactions`);
     return { errors: null, message: 'Client added successfully!' };
   } catch (error) {
     console.error('Error adding client:', error);
@@ -426,12 +425,11 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
             if (clientSnap.exists()) {
                 const clientData = clientSnap.data() as Client;
                 const utilized = Number(clientData.utilizedAmount || 0);
-                const debt = Number(clientData.debt || 0);
                 
                 const newUtilized = utilized - transactionData.amount;
                 
                 // Recalculate debt based on the new utilized amount
-                const newDebt = newUtilized > clientData.periodAllowance ? newUtilized - clientData.periodAllowance : 0;
+                const newDebt = newUtilized > (clientData.periodAllowance || 0) ? newUtilized - (clientData.periodAllowance || 0) : 0;
 
                 transaction.update(clientRef, { 
                   utilizedAmount: newUtilized < 0 ? 0 : newUtilized,
@@ -465,6 +463,17 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
             }
 
             const partnerData = partnerSnap.data() as Partner;
+
+            if (partnerData.lastPeriodStartedAt) {
+                const startDate = partnerData.lastPeriodStartedAt.toDate();
+                const expiryDate = new Date(startDate);
+                expiryDate.setDate(startDate.getDate() + 30); // Period is 30 days
+
+                if (new Date() < expiryDate) {
+                    throw new Error(`Cannot start a new period. The current period expires on ${expiryDate.toLocaleDateString()}.`);
+                }
+            }
+
             const { totalSharedAmount, sponsoredEmployeesCount } = partnerData;
             
             if (sponsoredEmployeesCount <= 0) {

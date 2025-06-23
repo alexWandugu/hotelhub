@@ -5,7 +5,7 @@ import { useFormStatus } from 'react-dom';
 import { addPartner, updatePartner, deletePartner, startNewPeriod } from '@/lib/actions';
 import type { Partner, Client } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, addDays, isAfter, formatDistanceToNow } from 'date-fns';
 
 import {
   AlertDialog,
@@ -55,7 +55,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Building2, PlusCircle, MoreHorizontal, Pencil, Trash2, AlertTriangle, Loader2, HandCoins } from 'lucide-react';
+import { Building2, PlusCircle, MoreHorizontal, Pencil, Trash2, AlertTriangle, Loader2, HandCoins, Clock } from 'lucide-react';
 
 
 type SerializablePartner = Omit<Partner, 'createdAt' | 'lastPeriodStartedAt'> & {
@@ -165,6 +165,23 @@ export function PartnersClient({ initialPartners, initialClients, hotelId }: Par
         }
         setNewPeriodAlertOpen(false);
     }
+
+    const getPeriodInfo = (lastPeriodStartedAt?: string) => {
+        if (!lastPeriodStartedAt) {
+            return { status: 'Not Started' as const, expiryDate: null, isActive: false, timeRemaining: null };
+        }
+        const startDate = new Date(lastPeriodStartedAt);
+        const expiryDate = addDays(startDate, 30);
+        const isActive = isAfter(expiryDate, new Date());
+        const timeRemaining = isActive ? formatDistanceToNow(expiryDate, { addSuffix: true }) : null;
+
+        return {
+            status: isActive ? 'Active' as const : 'Expired' as const,
+            expiryDate,
+            isActive,
+            timeRemaining,
+        };
+    };
     
     const formatDate = (dateString: string) => {
         if (!dateString) return 'N/A';
@@ -233,17 +250,42 @@ export function PartnersClient({ initialPartners, initialClients, hotelId }: Par
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Partner Name</TableHead>
-                                        <TableHead>Status</TableHead>
+                                        <TableHead>Partner Status</TableHead>
+                                        <TableHead>Period Status</TableHead>
+                                        <TableHead>Period Ends</TableHead>
                                         <TableHead className="text-right">Shared Amount</TableHead>
                                         <TableHead className="text-right">Consumed This Period</TableHead>
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {initialPartners.map((partner) => (
+                                    {initialPartners.map((partner) => {
+                                        const periodInfo = getPeriodInfo(partner.lastPeriodStartedAt);
+                                        return (
                                         <TableRow key={partner.id}>
                                             <TableCell className="font-medium">{partner.name}</TableCell>
                                             <TableCell><Badge variant={partner.status === 'active' ? 'default' : 'secondary'}>{partner.status}</Badge></TableCell>
+                                            <TableCell>
+                                                <Badge variant={
+                                                    periodInfo.status === 'Active' ? 'default' :
+                                                    periodInfo.status === 'Expired' ? 'outline' : 'secondary'
+                                                }>
+                                                    {periodInfo.status}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {periodInfo.expiryDate ? (
+                                                    <div className="flex items-center gap-2 text-sm">
+                                                        <Clock className="h-4 w-4 text-muted-foreground" />
+                                                        <div>
+                                                          <span>{format(periodInfo.expiryDate, 'PP')}</span>
+                                                          {periodInfo.timeRemaining && <p className="text-xs text-muted-foreground">{periodInfo.timeRemaining}</p>}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-muted-foreground text-sm">N/A</span>
+                                                )}
+                                            </TableCell>
                                             <TableCell className="text-right font-mono">{formatCurrency(partner.totalSharedAmount)}</TableCell>
                                             <TableCell className="text-right font-mono">{formatCurrency(getConsumedAmount(partner.id))}</TableCell>
                                             <TableCell className="text-right">
@@ -253,7 +295,10 @@ export function PartnersClient({ initialPartners, initialClients, hotelId }: Par
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                        <DropdownMenuItem onSelect={() => { setSelectedPartner(partner); setNewPeriodAlertOpen(true) }}>
+                                                        <DropdownMenuItem 
+                                                            onSelect={() => { setSelectedPartner(partner); setNewPeriodAlertOpen(true) }}
+                                                            disabled={periodInfo.isActive}
+                                                        >
                                                             <HandCoins className="mr-2 h-4 w-4" /><span>Start New Period</span>
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem onSelect={() => { setSelectedPartner(partner); setEditDialogOpen(true); }}>
@@ -267,7 +312,7 @@ export function PartnersClient({ initialPartners, initialClients, hotelId }: Par
                                                 </DropdownMenu>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
+                                    )})}
                                 </TableBody>
                             </Table>
                         </div>
