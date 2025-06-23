@@ -18,15 +18,6 @@ import { ArrowUpRight, Bot, DollarSign, Handshake, Users } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
-const chartData = [
-  { month: 'January', transactions: 186 },
-  { month: 'February', transactions: 305 },
-  { month: 'March', transactions: 237 },
-  { month: 'April', transactions: 73 },
-  { month: 'May', transactions: 209 },
-  { month: 'June', transactions: 214 },
-];
-
 const chartConfig = {
   transactions: {
     label: 'Transactions',
@@ -34,7 +25,23 @@ const chartConfig = {
   },
 };
 
-export default function AdminDashboard({ hotelId }: { hotelId: string }) {
+interface DashboardData {
+    totalRevenue: number;
+    totalTransactions: number;
+    newClientsCount: number;
+    chartData: { month: string; transactions: number }[];
+}
+
+export default function AdminDashboard({ hotelId, dashboardData }: { hotelId: string, dashboardData: DashboardData }) {
+  const { totalRevenue, totalTransactions, newClientsCount, chartData } = dashboardData;
+
+  const formatCurrency = (amount: number) => {
+    if (typeof amount !== 'number') return 'N/A';
+    return new Intl.NumberFormat('en-KE', {
+        style: 'currency',
+        currency: 'KES',
+    }).format(amount);
+  };
 
   return (
     <div className="space-y-8">
@@ -52,9 +59,9 @@ export default function AdminDashboard({ hotelId }: { hotelId: string }) {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$45,231.89</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
             <p className="text-xs text-muted-foreground">
-              +20.1% from last month
+              All-time revenue from transactions.
             </p>
           </CardContent>
         </Card>
@@ -64,9 +71,9 @@ export default function AdminDashboard({ hotelId }: { hotelId: string }) {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+23</div>
+            <div className="text-2xl font-bold">+{newClientsCount}</div>
             <p className="text-xs text-muted-foreground">
-              +12.2% from last month
+              In the last 30 days.
             </p>
           </CardContent>
         </Card>
@@ -78,9 +85,9 @@ export default function AdminDashboard({ hotelId }: { hotelId: string }) {
             <Handshake className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+12,234</div>
+            <div className="text-2xl font-bold">{totalTransactions.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              +5.1% from last month
+              All-time recorded transactions.
             </p>
           </CardContent>
         </Card>
@@ -109,6 +116,7 @@ export default function AdminDashboard({ hotelId }: { hotelId: string }) {
                   tickLine={false}
                   axisLine={false}
                   tickMargin={10}
+                  allowDecimals={false}
                 />
                 <ChartTooltip
                   cursor={false}
