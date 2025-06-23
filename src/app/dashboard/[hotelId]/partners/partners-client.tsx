@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useState, useEffect, useRef, useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { addPartner } from '@/lib/actions';
 import type { Partner } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -60,7 +60,7 @@ export function PartnersClient({ initialPartners, hotelId }: PartnersClientProps
     const formRef = useRef<HTMLFormElement>(null);
 
     const addPartnerWithHotelId = addPartner.bind(null, hotelId);
-    const [state, dispatch] = useFormState(addPartnerWithHotelId, { errors: null, message: null });
+    const [state, dispatch] = useActionState(addPartnerWithHotelId, { errors: null, message: null });
 
     useEffect(() => {
         if (state.message) {

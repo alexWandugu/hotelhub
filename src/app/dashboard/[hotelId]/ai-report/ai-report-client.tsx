@@ -1,6 +1,7 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { generateReportSummary } from '@/lib/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -34,7 +35,7 @@ function SubmitButton() {
 }
 
 export function AiReportClient() {
-  const [state, formAction] = useFormState(generateReportSummary, initialState);
+  const [state, formAction] = useActionState(generateReportSummary, initialState);
   const { pending } = useFormStatus();
 
   return (
