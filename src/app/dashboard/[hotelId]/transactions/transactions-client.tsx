@@ -115,13 +115,13 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     
     const currentDebt = useMemo(() => {
         if (!selectedClient) return 0;
-        return selectedClient.debt ?? 0;
+        return Number(selectedClient.debt || 0);
     }, [selectedClient]);
 
     const availableAllowance = useMemo(() => {
         if (!selectedClient) return 0;
-        const allowance = selectedClient.allowance ?? 0;
-        const debt = selectedClient.debt ?? 0;
+        const allowance = Number(selectedClient.allowance || 0);
+        const debt = Number(selectedClient.debt || 0);
         return allowance - debt;
     }, [selectedClient]);
 
@@ -241,7 +241,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                                                 <Check className={cn("mr-2 h-4 w-4", selectedClientId === client.id ? "opacity-100" : "opacity-0")} />
                                                                 <div className="flex justify-between w-full">
                                                                     <span>{client.name}</span>
-                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency((client.allowance ?? 0) - (client.debt ?? 0))}</span>
+                                                                    <span className="font-mono text-xs text-muted-foreground">{formatCurrency((Number(client.allowance) || 0) - (Number(client.debt) || 0))}</span>
                                                                 </div>
                                                             </CommandItem>
                                                         ))}

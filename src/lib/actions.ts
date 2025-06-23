@@ -340,8 +340,8 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
 
       const clientData = clientSnap.data() as Client;
       
-      const allowance = clientData.allowance ?? 0;
-      const debt = clientData.debt ?? 0;
+      const allowance = Number(clientData.allowance || 0);
+      const debt = Number(clientData.debt || 0);
       const availableAllowance = allowance - debt;
 
       if (amount > availableAllowance) {
