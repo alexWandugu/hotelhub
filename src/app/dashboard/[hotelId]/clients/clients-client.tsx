@@ -91,11 +91,9 @@ export function ClientsClient({ initialClients, partners, hotelId }: ClientsClie
                 });
                 setOpen(false);
                 formRef.current?.reset();
-                 // Reset form state after successful submission
-                dispatch({ errors: null, message: null });
             }
         }
-    }, [state, toast, dispatch]);
+    }, [state, toast]);
     
     const formatDate = (dateString: string) => {
         if (!dateString) return 'N/A';
