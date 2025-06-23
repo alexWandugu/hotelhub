@@ -54,7 +54,7 @@ export default function AuthPage() {
         title: "Success!",
         description: "You have been successfully logged in.",
       });
-      router.push("/dashboard");
+      router.push("/hotel-selection");
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -100,7 +100,7 @@ export default function AuthPage() {
         title: "Success!",
         description: "You have been successfully signed in with Google.",
       });
-      router.push("/dashboard");
+      router.push("/hotel-selection");
     } catch (error: any) {
       toast({
         variant: "destructive",
