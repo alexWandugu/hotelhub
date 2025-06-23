@@ -146,6 +146,7 @@ export async function updatePartner(hotelId: string, partnerId: string, prevStat
         
         revalidatePath(`/dashboard/${hotelId}/partners`);
         revalidatePath(`/dashboard/${hotelId}/clients`);
+        revalidatePath(`/dashboard/${hotelId}/transactions`);
         return { errors: null, message: 'Partner updated successfully!' };
 
     } catch (error: any) {
@@ -176,6 +177,7 @@ export async function deletePartner(hotelId: string, partnerId: string) {
         
         revalidatePath(`/dashboard/${hotelId}/partners`);
         revalidatePath(`/dashboard/${hotelId}/clients`);
+        revalidatePath(`/dashboard/${hotelId}/transactions`);
     } catch (error: any) {
         console.error("Error deleting partner:", error);
         throw new Error(`Failed to delete partner: ${error.message}`);
@@ -247,6 +249,7 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
     });
 
     revalidatePath(`/dashboard/${hotelId}/clients`);
+    revalidatePath(`/dashboard/${hotelId}/transactions`);
     return { errors: null, message: 'Client added successfully!' };
   } catch (error) {
     console.error('Error adding client:', error);
@@ -279,6 +282,7 @@ export async function updateClient(hotelId: string, clientId: string, prevState:
     await updateDoc(clientRef, { name: validatedFields.data.name });
 
     revalidatePath(`/dashboard/${hotelId}/clients`);
+    revalidatePath(`/dashboard/${hotelId}/transactions`);
     return { errors: null, message: 'Client name updated successfully!' };
   } catch (error) {
     return { errors: { _form: ["Database Error: Failed to update client."] }, message: `Update failed.` };
@@ -295,6 +299,7 @@ export async function deleteClient(hotelId: string, clientId: string) {
         await deleteDoc(clientRef);
         
         revalidatePath(`/dashboard/${hotelId}/clients`);
+        revalidatePath(`/dashboard/${hotelId}/transactions`);
     } catch (error: any) {
         console.error("Error deleting client:", error);
         throw new Error(`Failed to delete client: ${error.message}`);
@@ -336,15 +341,19 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
       const clientData = clientSnap.data() as Client;
       const availableAllowance = clientData.allowance - clientData.debt;
 
+      // The new debt is the client's previous debt plus the full transaction amount.
       const newDebt = clientData.debt + amount;
+      
       const transactionStatus = amount > availableAllowance ? 'flagged' : 'completed';
 
+      // Update the client's debt with the new total debt.
       transaction.update(clientRef, { debt: newDebt });
       
       const newTransactionRef = doc(collection(db, `hotels/${hotelId}/transactions`));
       transaction.set(newTransactionRef, {
         clientId: clientId,
         clientName: clientData.name,
+        partnerId: clientData.partnerId,
         partnerName: clientData.partnerName,
         amount: amount,
         status: transactionStatus,
