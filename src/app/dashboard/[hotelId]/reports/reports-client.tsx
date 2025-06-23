@@ -75,18 +75,6 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
         return filteredIndebtedClients.reduce((acc, client) => acc + client.debt, 0);
     }, [filteredIndebtedClients]);
     
-    useEffect(() => {
-        const handleAfterPrint = () => {
-            document.body.removeAttribute('data-printing');
-        };
-
-        window.addEventListener('afterprint', handleAfterPrint);
-
-        return () => {
-            window.removeEventListener('afterprint', handleAfterPrint);
-        };
-    }, []);
-
     const handleHistoryPartnerChange = (partnerId: string) => {
         setSelectedHistoryPartnerId(partnerId);
         setPeriodHistory([]);
@@ -117,22 +105,96 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
     const formatDate = (dateString: string) => format(new Date(dateString), 'PP');
 
     const handlePrint = (report: 'debt' | 'periods') => {
-        document.body.setAttribute('data-printing', report);
-        // Use a short timeout to allow the DOM to update before triggering the print dialog
+        const printAreaId = report === 'debt' ? 'print-area-debt' : 'print-area-periods';
+        const printContents = document.getElementById(printAreaId)?.innerHTML;
+
+        if (!printContents) {
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: 'Could not find the report content to print.',
+            });
+            return;
+        }
+
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (!doc) {
+            document.body.removeChild(iframe);
+            return;
+        }
+        
+        doc.open();
+        doc.write(`
+        <html>
+            <head>
+            <title>Print Report</title>
+            <style>
+                @page { size: A4; margin: 1.5cm; }
+                body { font-family: Inter, -apple-system, sans-serif; line-height: 1.5; color: #111827; }
+                table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+                th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+                thead th { background-color: #f9fafb; }
+                h3 { font-family: Poppins, sans-serif; font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
+                p { margin-top: 0; }
+                .text-muted-foreground { color: #6b7280; }
+                .text-sm { font-size: 0.875rem; }
+                .border-b { border-bottom: 1px solid #e5e7eb; }
+                .pb-4 { padding-bottom: 1rem; }
+                .mb-4 { margin-bottom: 1rem; }
+                .flex { display: flex; }
+                .justify-between { justify-content: space-between; }
+                .items-start { align-items: flex-start; }
+                .text-right { text-align: right; }
+                .font-mono { font-family: ui-monospace, Menlo, Monaco, monospace; }
+                .text-destructive { color: #dc2626; }
+                .font-medium { font-weight: 500; }
+                .pt-4 { padding-top: 1rem; }
+                .font-semibold { font-weight: 600; }
+                .font-bold { font-weight: 700; }
+                .text-lg { font-size: 1.125rem; }
+                .text-xl { font-size: 1.25rem; }
+                .text-2xl { font-size: 1.5rem; }
+                .bg-secondary { background-color: #f3f4f6; }
+                .rounded-lg { border-radius: 0.5rem; }
+                .p-8 { padding: 2rem; }
+                .items-center { align-items: center; }
+                .justify-center { justify-content: center; }
+                .text-center { text-align: center; }
+                svg { display: none; }
+            </style>
+            </head>
+            <body>
+            ${printContents}
+            </body>
+        </html>
+        `);
+        doc.close();
+        
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+
         setTimeout(() => {
-            window.print();
-        }, 100);
+            document.body.removeChild(iframe);
+        }, 500);
     };
+
 
     return (
         <div className="space-y-8">
-            <Card data-reports-ui id="print-area-debt-card">
-                <CardHeader className="print-hide">
+            <Card>
+                <CardHeader>
                     <CardTitle>Debt Report Generator</CardTitle>
                     <CardDescription>Select a partner company to view and print a report of clients with outstanding debt.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-4 print-hide">
+                    <div className="flex flex-col sm:flex-row gap-4">
                         <Select onValueChange={setSelectedDebtPartnerId} value={selectedDebtPartnerId}>
                             <SelectTrigger className="w-full sm:w-[300px]">
                                 <SelectValue placeholder="Select a partner company" />
@@ -202,13 +264,13 @@ export function ReportsClient({ hotelId, partners, initialIndebtedClients }: Rep
                 </CardContent>
             </Card>
 
-            <Card data-reports-ui id="print-area-periods-card">
-                <CardHeader className="print-hide">
+            <Card>
+                <CardHeader>
                     <CardTitle>Period History Report</CardTitle>
                     <CardDescription>Select a partner company to view their complete billing period history.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                     <div className="flex flex-col sm:flex-row gap-4 print-hide">
+                     <div className="flex flex-col sm:flex-row gap-4">
                         <Select onValueChange={handleHistoryPartnerChange} value={selectedHistoryPartnerId}>
                             <SelectTrigger className="w-full sm:w-[300px]">
                                 <SelectValue placeholder="Select a partner company" />
