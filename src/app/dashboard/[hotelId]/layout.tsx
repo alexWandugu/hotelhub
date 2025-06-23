@@ -15,8 +15,9 @@ import {
   LogOut,
   Settings,
   Users,
+  Printer,
 } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -67,7 +68,6 @@ export default function DashboardLayout({
       if (!params.hotelId || !user.uid) return;
 
       try {
-        // Fetch hotel and user data in parallel
         const hotelDocRef = doc(db, 'hotels', params.hotelId);
         const userDocRef = doc(db, 'hotels', params.hotelId, 'users', user.uid);
         
@@ -92,15 +92,17 @@ export default function DashboardLayout({
           const role = userDoc.data().role as HotelUser['role'];
           setUserRole(role);
           
-          const currentRoute = pathname.replace(`/dashboard/${params.hotelId}`, '') || '/';
-
           if (role === 'member') {
-            const memberAllowedRoutes = ['/new-transaction', '/ai-report'];
-            const isAllowed = memberAllowedRoutes.some(route => currentRoute.startsWith(route));
+            if (pathname === `/dashboard/${params.hotelId}`) {
+                router.replace(`/dashboard/${params.hotelId}/new-transaction`);
+                return; 
+            }
+            const memberAllowedRoutes = ['/new-transaction', '/ai-report', '/reports'];
+            const currentSubRoute = pathname.substring(`/dashboard/${params.hotelId}`.length);
+            const isAllowed = memberAllowedRoutes.some(route => currentSubRoute.startsWith(route));
             
             if (!isAllowed) {
               router.replace(`/dashboard/${params.hotelId}/new-transaction`);
-              // Do not authorize yet, let the redirect complete and the effect run again.
               return; 
             }
           }
@@ -134,22 +136,26 @@ export default function DashboardLayout({
     { href: `/dashboard/${params.hotelId}/ai-report`, icon: Bot, label: 'AI Report' },
     { href: `/dashboard/${params.hotelId}/partners`, icon: Building2, label: 'Partners' },
     { href: `/dashboard/${params.hotelId}/clients`, icon: Users, label: 'Clients' },
+    { href: `/dashboard/${params.hotelId}/reports`, icon: Printer, label: 'Reports' },
     { href: `/dashboard/${params.hotelId}/users`, icon: Settings, label: 'Manage Users' },
   ];
 
   const memberNavItems = [
     { href: `/dashboard/${params.hotelId}/new-transaction`, icon: Handshake, label: 'New Transaction' },
     { href: `/dashboard/${params.hotelId}/ai-report`, icon: Bot, label: 'AI Report' },
+    { href: `/dashboard/${params.hotelId}/reports`, icon: Printer, label: 'Reports' },
   ];
 
-  const navItems = userRole === 'admin' ? adminNavItems : memberNavItems;
+  const navItems = userRole === 'admin' ? adminNavItems : userRole === 'member' ? memberNavItems : [];
 
   const isNavItemActive = (href: string) => {
-    // Exact match for the main dashboard, prefix match for others.
-    if (href === `/dashboard/${params.hotelId}`) {
-      return pathname === href;
+    if (userRole === 'member' && href.endsWith('/new-transaction')) {
+        return pathname === href || pathname === `/dashboard/${params.hotelId}`;
     }
-    return pathname.startsWith(href);
+    if (userRole === 'admin' && href.endsWith(`/dashboard/${params.hotelId}`)) {
+        return pathname === href;
+    }
+    return pathname.startsWith(href) && href !== `/dashboard/${params.hotelId}`;
   };
 
   if (authLoading || !isAuthorized) {
@@ -201,11 +207,11 @@ export default function DashboardLayout({
         </SidebarContent>
         <SidebarSeparator />
         <div className="p-4">
-          <Button variant="outline" className="w-full group-data-[collapsible=icon]:hidden" onClick={() => router.push('/')}>
+          <Button variant="outline" className="w-full group-data-[collapsible=icon]:hidden" onClick={() => auth.signOut().then(() => router.push('/'))}>
             <LogOut className="mr-2 h-4 w-4" />
             Logout
           </Button>
-          <Button variant="ghost" size="icon" className="hidden w-full group-data-[collapsible=icon]:flex" onClick={() => router.push('/')}>
+          <Button variant="ghost" size="icon" className="hidden w-full group-data-[collapsible=icon]:flex" onClick={() => auth.signOut().then(() => router.push('/'))}>
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
@@ -235,7 +241,7 @@ export default function DashboardLayout({
                 <Building2 className="mr-2 h-4 w-4" />
                 <span>Switch Hotel</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push('/')}>
+              <DropdownMenuItem onClick={() => auth.signOut().then(() => router.push('/'))}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>
