@@ -16,10 +16,11 @@ export type Partner = {
   createdAt: Timestamp;
   sponsoredEmployeesCount: number;
   totalSharedAmount: number;
+  lastPeriodStartedAt?: Timestamp;
 };
 
 export type Client = {
-  id: string;
+  id:string;
   name: string;
   partnerId: string;
   partnerName: string;

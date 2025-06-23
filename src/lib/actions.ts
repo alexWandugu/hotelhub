@@ -244,14 +244,12 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
         message: 'Validation failed.'
       };
     }
-    
-    const periodAllowance = partnerData.sponsoredEmployeesCount > 0 ? partnerData.totalSharedAmount / partnerData.sponsoredEmployeesCount : 0;
 
     await addDoc(collection(db, 'hotels', hotelId, 'clients'), {
       name: validatedFields.data.name,
       partnerId,
       partnerName,
-      periodAllowance: periodAllowance,
+      periodAllowance: 0,
       utilizedAmount: 0,
       debt: 0,
       status: 'active',
@@ -358,13 +356,16 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
 
       const periodAllowance = Number(clientData.periodAllowance || 0);
       const utilizedAmount = Number(clientData.utilizedAmount || 0);
+      const availableBalance = periodAllowance - utilizedAmount;
+
+      if (amount > availableBalance) {
+          throw new Error(`Transaction amount of ${amount} exceeds available balance of ${availableBalance}.`);
+      }
 
       const newUtilizedAmount = utilizedAmount + amount;
-      const newDebt = newUtilizedAmount > periodAllowance ? newUtilizedAmount - periodAllowance : 0;
       
       transaction.update(clientRef, { 
         utilizedAmount: newUtilizedAmount,
-        debt: newDebt,
       });
       
       const newTransactionRef = doc(collection(db, `hotels/${hotelId}/transactions`));
@@ -469,6 +470,8 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
             if (sponsoredEmployeesCount <= 0) {
                  throw new Error("Partner has no sponsored employees to start a new period for.");
             }
+            
+            transaction.update(partnerRef, { lastPeriodStartedAt: serverTimestamp() });
 
             const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
             
