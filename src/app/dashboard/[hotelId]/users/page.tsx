@@ -35,7 +35,14 @@ export default async function UsersPage({ params }: { params: { hotelId: string 
     notFound();
   }
 
-  const users = await getUsers(params.hotelId);
+  const usersData = await getUsers(params.hotelId);
+
+  const users = usersData.map(user => ({
+    ...user,
+    joinedAt: user.joinedAt?.toDate().toISOString(),
+    requestedAt: user.requestedAt?.toDate().toISOString(),
+  }));
+
   const pendingUsers = users.filter((u) => u.status === 'pending');
   const activeUsers = users.filter((u) => u.status === 'active');
   

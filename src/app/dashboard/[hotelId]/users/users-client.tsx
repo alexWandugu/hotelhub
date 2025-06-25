@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { manageUserStatus } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import type { HotelUser } from '@/lib/types';
+import type { HotelUser as HotelUserWithTimestamp } from '@/lib/types';
 
 import {
   Card,
@@ -23,6 +23,11 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Bell, Check, UserCheck, Users, X } from 'lucide-react';
+
+type HotelUser = Omit<HotelUserWithTimestamp, 'joinedAt' | 'requestedAt'> & {
+  joinedAt?: string;
+  requestedAt?: string;
+};
 
 
 function UserTable({
