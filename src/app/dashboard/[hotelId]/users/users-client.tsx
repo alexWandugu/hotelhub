@@ -143,7 +143,7 @@ export function UsersClient({ pendingUsers, activeUsers, hotelId }: UsersClientP
         <Share2 className="h-4 w-4" />
         <AlertTitle>Share Your Hotel ID</AlertTitle>
         <AlertDescription>
-          Give this ID to team members so they can request access to this hotel dashboard.
+          Give this ID to your team so they can request access to your hotel dashboard.
         </AlertDescription>
         <div className="mt-4 flex items-center gap-4 rounded-md bg-secondary p-3">
           <p className="flex-1 font-mono text-sm text-secondary-foreground truncate">{hotelId}</p>
