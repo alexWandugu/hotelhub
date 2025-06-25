@@ -14,7 +14,7 @@ export default function UsersPage() {
         <CardHeader>
           <CardTitle>Coming Soon</CardTitle>
           <CardDescription>This feature is currently under construction.</CardDescription>
-        </Header>
+        </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center text-center p-8 md:p-16 bg-secondary rounded-lg">
               <Settings className="h-12 w-12 text-muted-foreground mb-4" />
