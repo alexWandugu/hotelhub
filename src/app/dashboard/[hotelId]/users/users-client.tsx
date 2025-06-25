@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Bell, Check, UserCheck, Users, X } from 'lucide-react';
+import { Bell, Check, UserCheck, Users, X, Copy, Share2 } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type HotelUser = Omit<HotelUserWithTimestamp, 'joinedAt' | 'requestedAt'> & {
   joinedAt?: string;
@@ -108,6 +109,14 @@ interface UsersClientProps {
 export function UsersClient({ pendingUsers, activeUsers, hotelId }: UsersClientProps) {
   const { toast } = useToast();
 
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(hotelId);
+    toast({
+      title: "Copied!",
+      description: "Hotel ID has been copied to your clipboard.",
+    });
+  };
+
   const handleAction = async (
     targetUserId: string,
     action: 'approve' | 'deny'
@@ -129,7 +138,22 @@ export function UsersClient({ pendingUsers, activeUsers, hotelId }: UsersClientP
   };
 
   return (
-    <>
+    <div className="space-y-8">
+       <Alert>
+        <Share2 className="h-4 w-4" />
+        <AlertTitle>Share Your Hotel ID</AlertTitle>
+        <AlertDescription>
+          Give this ID to team members so they can request access to this hotel dashboard.
+        </AlertDescription>
+        <div className="mt-4 flex items-center gap-4 rounded-md bg-secondary p-3">
+          <p className="flex-1 font-mono text-sm text-secondary-foreground truncate">{hotelId}</p>
+          <Button variant="outline" size="sm" onClick={handleCopyId}>
+            <Copy className="mr-2 h-4 w-4" />
+            Copy ID
+          </Button>
+        </div>
+      </Alert>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -175,6 +199,6 @@ export function UsersClient({ pendingUsers, activeUsers, hotelId }: UsersClientP
           )}
         </CardContent>
       </Card>
-    </>
+    </div>
   )
 }
