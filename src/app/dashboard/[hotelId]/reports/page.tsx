@@ -1,4 +1,4 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { ReportsClient } from './reports-client';
 import type { Client, Partner } from '@/lib/types';
@@ -41,12 +41,32 @@ async function getReportData(hotelId: string) {
     }
 }
 
+async function getHotelName(hotelId: string): Promise<string> {
+    try {
+        const hotelDocRef = doc(db, 'hotels', hotelId);
+        const hotelDoc = await getDoc(hotelDocRef);
+        if (hotelDoc.exists()) {
+            return hotelDoc.data().name as string;
+        }
+        return 'Hotel Report';
+    } catch (error) {
+        console.error("Failed to fetch hotel name:", error);
+        return 'Hotel Report';
+    }
+}
+
+
 export default async function ReportsPage({ params }: { params: { hotelId: string } }) {
   if (!params.hotelId) {
     notFound();
   }
 
-  const { partners, indebtedClients } = await getReportData(params.hotelId);
+  const [reportData, hotelName] = await Promise.all([
+      getReportData(params.hotelId),
+      getHotelName(params.hotelId)
+  ]);
+
+  const { partners, indebtedClients } = reportData;
 
   return (
     <div className="space-y-8">
@@ -58,6 +78,7 @@ export default async function ReportsPage({ params }: { params: { hotelId: strin
       </div>
       <ReportsClient
         hotelId={params.hotelId}
+        hotelName={hotelName}
         partners={partners}
         initialIndebtedClients={indebtedClients}
       />
