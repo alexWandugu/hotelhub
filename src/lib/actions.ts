@@ -475,13 +475,20 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
     
     try {
         await db.runTransaction(async (transaction) => {
+            // --- All READS first ---
             const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
-            const partnerSnap = await transaction.get(partnerRef);
+            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
+            
+            const [partnerSnap, clientsSnapshot] = await Promise.all([
+                transaction.get(partnerRef),
+                transaction.get(clientsQuery)
+            ]);
 
             if (!partnerSnap.exists) {
                 throw new Error("Partner not found.");
             }
-
+            
+            // --- All LOGIC next ---
             const partnerData = partnerSnap.data() as Partner;
 
             if (partnerData.lastPeriodStartedAt) {
@@ -499,11 +506,12 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
                  throw new Error("Partner has no sponsored employees to start a new period for.");
             }
             
-            // Create historical record for the new period
-            const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
+            const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
             const newStartDate = new Date();
             const newEndDate = addDays(newStartDate, 30);
             
+            // --- All WRITES last ---
+            const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
             transaction.set(historyRef, {
                 startDate: newStartDate,
                 endDate: newEndDate,
@@ -511,14 +519,7 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
                 totalSharedAmount,
             });
 
-            // Update partner with new period start date
             transaction.update(partnerRef, { lastPeriodStartedAt: FieldValue.serverTimestamp() });
-
-            // Update clients
-            const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
-            
-            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
-            const clientsSnapshot = await transaction.get(clientsQuery);
 
             clientsSnapshot.docs.forEach(clientDoc => {
                 const clientRef = clientDoc.ref;
