@@ -1,5 +1,3 @@
-'use server';
-
 import * as admin from 'firebase-admin';
 
 // This function ensures the Firebase Admin SDK is initialized only once.
