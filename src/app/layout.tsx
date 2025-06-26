@@ -21,6 +21,7 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#3F51B5" />
+        <meta name="apple-mobile-web-app-title" content="Hotels Hub" />
       </head>
       <body className="font-body antialiased">
         {children}
