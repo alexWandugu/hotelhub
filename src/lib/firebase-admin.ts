@@ -1,28 +1,43 @@
+'use server';
+
 import * as admin from 'firebase-admin';
 
-// Ensure the service account JSON is parsed correctly.
-// The environment variable is a base64 encoded string.
-const serviceAccountString = Buffer.from(
-  process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || '',
-  'base64'
-).toString('utf8');
+// This function ensures the Firebase Admin SDK is initialized only once.
+function initializeAdminApp() {
+  // If the app is already initialized, return the existing instance.
+  if (admin.apps.length > 0) {
+    return admin.app();
+  }
 
-const serviceAccount = serviceAccountString ? JSON.parse(serviceAccountString) : {};
+  // The service account key must be provided as a base64 encoded string
+  // in the FIREBASE_SERVICE_ACCOUNT environment variable.
+  const serviceAccountString = Buffer.from(
+    process.env.FIREBASE_SERVICE_ACCOUNT || '',
+    'base64'
+  ).toString('utf8');
 
-// Initialize Firebase Admin SDK if not already initialized.
-if (!admin.apps.length) {
+  // Throw a clear error if the service account is missing.
+  if (!serviceAccountString) {
+    throw new Error(
+      'FIREBASE_SERVICE_ACCOUNT environment variable is not set. This is required for all server-side Firebase operations.'
+    );
+  }
+
   try {
-    admin.initializeApp({
+    const serviceAccount = JSON.parse(serviceAccountString);
+
+    // Initialize the app with the service account credentials.
+    return admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      // Optional: Add your databaseURL if you have one.
-      // databaseURL: `https://${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.firebaseio.com`
     });
-  } catch (error: any) {
-    console.error('Firebase Admin Initialization Error', error.stack);
+  } catch (e: any) {
+    // Throw a clear error if the service account JSON is invalid.
+    throw new Error(`Failed to parse FIREBASE_SERVICE_ACCOUNT JSON: ${e.message}`);
   }
 }
 
-// Export the initialized admin services.
-export const auth = admin.auth();
-export const db = admin.firestore();
-export const storage = admin.storage();
+// Initialize the app and export the services.
+const app = initializeAdminApp();
+export const auth = admin.auth(app);
+export const db = admin.firestore(app);
+export const storage = admin.storage(app);
