@@ -2,8 +2,8 @@
 
 import { transactionReportSummary } from '@/ai/flows/transaction-report-summary';
 import { z } from 'zod';
-import { doc, updateDoc, deleteDoc, serverTimestamp, collection, addDoc, getDoc, query, where, getDocs, writeBatch, runTransaction, orderBy } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { revalidatePath } from 'next/cache';
 import type { Client, Partner, Transaction, PeriodHistory } from './types';
 import { addDays } from 'date-fns';
@@ -44,15 +44,15 @@ export async function manageUserStatus(
   }
 
   try {
-    const userDocRef = doc(db, 'hotels', hotelId, 'users', targetUserId);
+    const userDocRef = db.doc(`hotels/${hotelId}/users/${targetUserId}`);
 
     if (action === 'approve') {
-      await updateDoc(userDocRef, { 
+      await userDocRef.update({ 
         status: 'active',
-        joinedAt: serverTimestamp(),
+        joinedAt: FieldValue.serverTimestamp(),
       });
     } else if (action === 'deny') {
-      await deleteDoc(userDocRef);
+      await userDocRef.delete();
     }
     
     revalidatePath(`/dashboard/${hotelId}/users`);
@@ -88,10 +88,10 @@ export async function addPartner(hotelId: string, prevState: any, formData: Form
   }
 
   try {
-    await addDoc(collection(db, 'hotels', hotelId, 'partners'), {
+    await db.collection(`hotels/${hotelId}/partners`).add({
       ...validatedFields.data,
       status: 'active',
-      createdAt: serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     
     revalidatePath(`/dashboard/${hotelId}/partners`);
@@ -124,11 +124,11 @@ export async function updatePartner(hotelId: string, partnerId: string, prevStat
     const { name, sponsoredEmployeesCount, totalSharedAmount } = validatedFields.data;
 
     try {
-        await runTransaction(db, async (transaction) => {
-            const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
+        await db.runTransaction(async (transaction) => {
+            const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
             
-            const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', '==', partnerId));
-            const clientsSnapshot = await getDocs(clientsQuery);
+            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
+            const clientsSnapshot = await transaction.get(clientsQuery);
             const existingClientsCount = clientsSnapshot.size;
 
             if (sponsoredEmployeesCount < existingClientsCount) {
@@ -140,7 +140,7 @@ export async function updatePartner(hotelId: string, partnerId: string, prevStat
             const newPeriodAllowance = sponsoredEmployeesCount > 0 ? totalSharedAmount / sponsoredEmployeesCount : 0;
             
             clientsSnapshot.docs.forEach(clientDoc => {
-                const clientRef = doc(db, `hotels/${hotelId}/clients`, clientDoc.id);
+                const clientRef = db.doc(`hotels/${hotelId}/clients/${clientDoc.id}`);
                 // Note: This updates the allowance mid-period. It does not reset consumption.
                 transaction.update(clientRef, { periodAllowance: newPeriodAllowance, partnerName: name });
             });
@@ -163,31 +163,31 @@ export async function deletePartner(hotelId: string, partnerId: string) {
     }
 
     try {
-        const batch = writeBatch(db);
+        const batch = db.batch();
 
         // Delete associated clients
-        const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', '==', partnerId));
-        const clientsSnapshot = await getDocs(clientsQuery);
+        const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
+        const clientsSnapshot = await clientsQuery.get();
         clientsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
 
         // Delete associated transactions
-        const transactionsQuery = query(collection(db, `hotels/${hotelId}/transactions`), where('partnerId', '==', partnerId));
-        const transactionsSnapshot = await getDocs(transactionsQuery);
+        const transactionsQuery = db.collection(`hotels/${hotelId}/transactions`).where('partnerId', '==', partnerId);
+        const transactionsSnapshot = await transactionsQuery.get();
         transactionsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
         
         // Delete period history
-        const historyQuery = query(collection(db, `hotels/${hotelId}/partners/${partnerId}/periodHistory`));
-        const historySnapshot = await getDocs(historyQuery);
+        const historyQuery = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`);
+        const historySnapshot = await historyQuery.get();
         historySnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
 
         // Delete the partner
-        const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
+        const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
         batch.delete(partnerRef);
         
         await batch.commit();
@@ -233,18 +233,15 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
   }
 
   try {
-    const partnerRef = doc(db, `hotels/${hotelId}/partners`, partnerId);
-    const partnerSnap = await getDoc(partnerRef);
-    if (!partnerSnap.exists()) {
+    const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
+    const partnerSnap = await partnerRef.get();
+    if (!partnerSnap.exists) {
       return { errors: { partner: ['Selected partner not found.'] }, message: "Validation failed." };
     }
     const partnerData = partnerSnap.data() as Partner;
 
-    const clientsQuery = query(
-      collection(db, `hotels/${hotelId}/clients`),
-      where('partnerId', '==', partnerId)
-    );
-    const clientsSnapshot = await getDocs(clientsQuery);
+    const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
+    const clientsSnapshot = await clientsQuery.get();
     const existingClientsCount = clientsSnapshot.size;
 
     if (existingClientsCount >= partnerData.sponsoredEmployeesCount) {
@@ -254,7 +251,7 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
       };
     }
 
-    await addDoc(collection(db, 'hotels', hotelId, 'clients'), {
+    await db.collection(`hotels/${hotelId}/clients`).add({
       name: validatedFields.data.name,
       partnerId,
       partnerName,
@@ -262,7 +259,7 @@ export async function addClient(hotelId: string, prevState: any, formData: FormD
       utilizedAmount: 0,
       debt: 0,
       status: 'active',
-      createdAt: serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     revalidatePath(`/dashboard/${hotelId}/clients`);
@@ -295,8 +292,8 @@ export async function updateClient(hotelId: string, clientId: string, prevState:
   }
 
   try {
-    const clientRef = doc(db, 'hotels', hotelId, 'clients', clientId);
-    await updateDoc(clientRef, { name: validatedFields.data.name });
+    const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
+    await clientRef.update({ name: validatedFields.data.name });
 
     revalidatePath(`/dashboard/${hotelId}/clients`);
     revalidatePath(`/dashboard/${hotelId}/transactions`);
@@ -312,8 +309,8 @@ export async function deleteClient(hotelId: string, clientId: string) {
     }
 
     try {
-        const clientRef = doc(db, 'hotels', hotelId, 'clients', clientId);
-        await deleteDoc(clientRef);
+        const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
+        await clientRef.delete();
         
         revalidatePath(`/dashboard/${hotelId}/clients`);
         revalidatePath(`/dashboard/${hotelId}/transactions`);
@@ -349,11 +346,11 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
 
   try {
-    await runTransaction(db, async (transaction) => {
-      const clientRef = doc(db, `hotels/${hotelId}/clients`, clientId);
+    await db.runTransaction(async (transaction) => {
+      const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
       const clientSnap = await transaction.get(clientRef);
 
-      if (!clientSnap.exists()) {
+      if (!clientSnap.exists) {
         throw new Error("Selected client could not be found.");
       }
 
@@ -386,7 +383,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         debt: newDebt,
       });
       
-      const newTransactionRef = doc(collection(db, `hotels/${hotelId}/transactions`));
+      const newTransactionRef = db.collection(`hotels/${hotelId}/transactions`).doc();
       transaction.set(newTransactionRef, {
         clientId: clientId,
         clientName: clientData.name,
@@ -394,7 +391,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         partnerName: clientData.partnerName,
         amount: amount,
         status: 'completed',
-        createdAt: serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         receiptNo: receiptNo,
       });
     });
@@ -416,8 +413,8 @@ export async function flagTransaction(hotelId: string, transactionId: string) {
     }
 
     try {
-        const transactionRef = doc(db, 'hotels', hotelId, 'transactions', transactionId);
-        await updateDoc(transactionRef, { status: 'flagged' });
+        const transactionRef = db.doc(`hotels/${hotelId}/transactions/${transactionId}`);
+        await transactionRef.update({ status: 'flagged' });
         
         revalidatePath(`/dashboard/${hotelId}/transactions`);
         revalidatePath(`/dashboard/${hotelId}/new-transaction`);
@@ -432,18 +429,18 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
     }
 
     try {
-        await runTransaction(db, async (transaction) => {
-            const transactionRef = doc(db, 'hotels', hotelId, 'transactions', transactionId);
+        await db.runTransaction(async (transaction) => {
+            const transactionRef = db.doc(`hotels/${hotelId}/transactions/${transactionId}`);
             const transactionSnap = await transaction.get(transactionRef);
 
-            if (!transactionSnap.exists()) {
+            if (!transactionSnap.exists) {
                 throw new Error("Transaction not found.");
             }
             const transactionData = transactionSnap.data() as Transaction;
-            const clientRef = doc(db, `hotels/${hotelId}/clients`, transactionData.clientId);
+            const clientRef = db.doc(`hotels/${hotelId}/clients/${transactionData.clientId}`);
             const clientSnap = await transaction.get(clientRef);
 
-            if (clientSnap.exists()) {
+            if (clientSnap.exists) {
                 const clientData = clientSnap.data() as Client;
                 const utilized = Number(clientData.utilizedAmount || 0);
                 
@@ -477,11 +474,11 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
     }
     
     try {
-        await runTransaction(db, async (transaction) => {
-            const partnerRef = doc(db, 'hotels', hotelId, 'partners', partnerId);
+        await db.runTransaction(async (transaction) => {
+            const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
             const partnerSnap = await transaction.get(partnerRef);
 
-            if (!partnerSnap.exists()) {
+            if (!partnerSnap.exists) {
                 throw new Error("Partner not found.");
             }
 
@@ -503,7 +500,7 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
             }
             
             // Create historical record for the new period
-            const historyRef = doc(collection(db, `hotels/${hotelId}/partners/${partnerId}/periodHistory`));
+            const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
             const newStartDate = new Date();
             const newEndDate = addDays(newStartDate, 30);
             
@@ -515,13 +512,13 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
             });
 
             // Update partner with new period start date
-            transaction.update(partnerRef, { lastPeriodStartedAt: serverTimestamp() });
+            transaction.update(partnerRef, { lastPeriodStartedAt: FieldValue.serverTimestamp() });
 
             // Update clients
             const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
             
-            const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where("partnerId", "==", partnerId));
-            const clientsSnapshot = await getDocs(clientsQuery);
+            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
+            const clientsSnapshot = await transaction.get(clientsQuery);
 
             clientsSnapshot.docs.forEach(clientDoc => {
                 const clientRef = clientDoc.ref;
@@ -555,11 +552,8 @@ export async function getPartnerPeriodHistory(hotelId: string, partnerId: string
         throw new Error("Hotel ID and Partner ID are required.");
     }
     try {
-        const historyQuery = query(
-            collection(db, `hotels/${hotelId}/partners/${partnerId}/periodHistory`),
-            orderBy('startDate', 'desc')
-        );
-        const snapshot = await getDocs(historyQuery);
+        const historyQuery = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).orderBy('startDate', 'desc');
+        const snapshot = await historyQuery.get();
         if (snapshot.empty) {
             return [];
         }
