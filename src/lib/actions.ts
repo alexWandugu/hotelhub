@@ -346,6 +346,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
 
   try {
+    const newTransactionDate = new Date();
     await db.runTransaction(async (transaction) => {
       const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
       const clientSnap = await transaction.get(clientRef);
@@ -391,7 +392,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         partnerName: clientData.partnerName,
         amount: amount,
         status: 'completed',
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: newTransactionDate,
         receiptNo: receiptNo,
       });
     });
@@ -474,6 +475,7 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
     }
     
     try {
+        const newStartDate = new Date();
         await db.runTransaction(async (transaction) => {
             // All READS must be performed before any writes.
             const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
@@ -506,7 +508,6 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
             const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
             
             // All WRITES must come at the end of the transaction.
-            const newStartDate = new Date();
             const newEndDate = addDays(newStartDate, 30);
             
             const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
@@ -517,7 +518,7 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
                 totalSharedAmount,
             });
 
-            transaction.update(partnerRef, { lastPeriodStartedAt: FieldValue.serverTimestamp() });
+            transaction.update(partnerRef, { lastPeriodStartedAt: newStartDate });
 
             clientsSnapshot.docs.forEach(clientDoc => {
                 const clientData = clientDoc.data() as Client;
