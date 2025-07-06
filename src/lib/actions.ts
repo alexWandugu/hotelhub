@@ -373,10 +373,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
           throw new Error(`Transaction amount exceeds the debt limit of 300 KES.`);
       }
 
-      if (overage > 0 && allowOverage !== 'true') {
-          throw new Error('This transaction creates debt and requires explicit confirmation.');
-      }
-
       const newUtilizedAmount = utilizedAmount + amount;
       const newDebt = overage > 0 ? overage : 0;
       
@@ -478,19 +474,14 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
     const newStartDate = new Date();
     try {
         await db.runTransaction(async (transaction) => {
-            // All READS must be performed before any writes.
             const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
-            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
-
             const partnerSnap = await transaction.get(partnerRef);
-            const clientsSnapshot = await transaction.get(clientsQuery);
             
             if (!partnerSnap.exists) {
                 throw new Error("Partner not found.");
             }
             const partnerData = partnerSnap.data() as Partner;
             
-            // All LOGIC must come after all reads and before any writes.
             if (partnerData.lastPeriodStartedAt) {
                 const startDate = partnerData.lastPeriodStartedAt.toDate();
                 const expiryDate = addDays(startDate, 30);
@@ -500,6 +491,9 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
                 }
             }
 
+            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
+            const clientsSnapshot = await transaction.get(clientsQuery);
+            
             const { totalSharedAmount, sponsoredEmployeesCount } = partnerData;
             
             if (sponsoredEmployeesCount <= 0) {
@@ -508,7 +502,6 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
             
             const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
             
-            // All WRITES must come at the end of the transaction.
             const newEndDate = addDays(newStartDate, 30);
             
             const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
