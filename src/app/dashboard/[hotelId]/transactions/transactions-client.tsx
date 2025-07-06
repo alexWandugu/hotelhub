@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef, useActionState, useMemo, useTransition } from 'react';
@@ -7,6 +8,8 @@ import { useToast } from '@/hooks/use-toast';
 import { DataTable } from './data-table';
 import { columns } from './columns';
 import { cn } from '@/lib/utils';
+import { onSnapshot, collection, query, orderBy, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 // UI Imports
 import {
@@ -82,12 +85,16 @@ function SubmitButton({ disabled, pending, children }: { disabled: boolean, pend
 }
 
 // Main Component
-export function TransactionsClient({ initialTransactions, clients, hotelId }: TransactionsClientProps) {
+export function TransactionsClient({ initialTransactions, clients: serverClients, hotelId }: TransactionsClientProps) {
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [confirmDebtDialogOpen, setConfirmDebtDialogOpen] = useState(false);
     const formDataRef = useRef<FormData | null>(null);
+
+    // Live data state
+    const [transactions, setTransactions] = useState<SerializableTransaction[]>(initialTransactions);
+    const [allClients, setAllClients] = useState<ClientForDropdown[]>(serverClients);
 
     // Form state management
     const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
@@ -99,6 +106,51 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     const [isPending, startTransition] = useTransition();
     const addTransactionWithHotelId = addTransaction.bind(null, hotelId);
     const [state, dispatch] = useActionState(addTransactionWithHotelId, { errors: null, message: null });
+
+    // Add listeners for real-time data
+    useEffect(() => {
+        const transactionsQuery = query(collection(db, `hotels/${hotelId}/transactions`), orderBy('createdAt', 'desc'));
+        const transUnsub = onSnapshot(transactionsQuery, (snapshot) => {
+            const fetchedTransactions = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    ...data,
+                    id: doc.id,
+                    createdAt: (data.createdAt.toDate()).toISOString()
+                } as SerializableTransaction;
+            });
+            setTransactions(fetchedTransactions);
+        });
+
+        const activePartnerIds = Array.from(new Set(serverClients.map(c => c.partnerId)));
+        if (activePartnerIds.length === 0) {
+            setAllClients([]);
+            return () => { transUnsub(); };
+        }
+
+        const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', 'in', activePartnerIds));
+        const clientsUnsub = onSnapshot(clientsQuery, (snapshot) => {
+            const fetchedClients = snapshot.docs.map(doc => {
+                const c = doc.data();
+                return {
+                    id: doc.id,
+                    name: c.name,
+                    partnerName: c.partnerName,
+                    partnerId: c.partnerId,
+                    periodAllowance: Number(c.periodAllowance || 0),
+                    utilizedAmount: Number(c.utilizedAmount || 0),
+                    debt: Number(c.debt || 0),
+                };
+            });
+            setAllClients(fetchedClients);
+        });
+
+        return () => {
+            transUnsub();
+            clientsUnsub();
+        };
+
+    }, [hotelId, serverClients]);
 
     const resetFormState = () => {
         setDialogOpen(false);
@@ -128,7 +180,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     };
 
     // Derived data for UI logic
-    const selectedClient = useMemo(() => clients.find(c => c.id === selectedClientId), [clients, selectedClientId]);
+    const selectedClient = useMemo(() => allClients.find(c => c.id === selectedClientId), [allClients, selectedClientId]);
     
     const hasDebt = useMemo(() => {
         if (!selectedClient) return false;
@@ -152,18 +204,18 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
     
     const partners = useMemo(() => {
         const partnerMap = new Map<string, { id: string; name: string }>();
-        clients.forEach(client => {
+        allClients.forEach(client => {
             if (!partnerMap.has(client.partnerId)) {
                 partnerMap.set(client.partnerId, { id: client.partnerId, name: client.partnerName });
             }
         });
         return Array.from(partnerMap.values());
-    }, [clients]);
+    }, [allClients]);
 
     const filteredClients = useMemo(() => {
         if (!selectedPartnerId) return [];
-        return clients.filter(client => client.partnerId === selectedPartnerId);
-    }, [clients, selectedPartnerId]);
+        return allClients.filter(client => client.partnerId === selectedPartnerId);
+    }, [allClients, selectedPartnerId]);
 
     const handlePartnerChange = (partnerId: string) => {
         setSelectedPartnerId(partnerId);
@@ -220,7 +272,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                     }
                 }}>
                     <DialogTrigger asChild>
-                        <Button className="w-full sm:w-auto" disabled={clients.length === 0}>
+                        <Button className="w-full sm:w-auto" disabled={allClients.length === 0}>
                             <PlusCircle className="mr-2 h-4 w-4" />
                             New Transaction
                         </Button>
@@ -229,10 +281,10 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                         <DialogHeader>
                             <DialogTitle>Record New Transaction</DialogTitle>
                             <DialogDescription>
-                                {clients.length > 0 ? "Select a client and enter the transaction amount." : "You must add a client before you can record a transaction."}
+                                {allClients.length > 0 ? "Select a client and enter the transaction amount." : "You must add a client before you can record a transaction."}
                             </DialogDescription>
                         </DialogHeader>
-                        {clients.length > 0 && (
+                        {allClients.length > 0 && (
                             <form onSubmit={handleFormSubmit} ref={formRef} className="space-y-4 pt-4">
                                 {state?.errors?._form && (
                                     <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{state.errors._form[0]}</AlertDescription></Alert>
@@ -261,7 +313,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                             </Button>
                                         </PopoverTrigger>
-                                        <PopoverContent className="w-[375px] p-0">
+                                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                                             <Command>
                                                 <CommandInput placeholder="Search client..." />
                                                 <CommandList>
@@ -344,7 +396,7 @@ export function TransactionsClient({ initialTransactions, clients, hotelId }: Tr
                     </DialogContent>
                 </Dialog>
             </div>
-            <DataTable columns={columns} data={initialTransactions} />
+            <DataTable columns={columns} data={transactions} />
 
             <AlertDialog open={confirmDebtDialogOpen} onOpenChange={setConfirmDebtDialogOpen}>
                 <AlertDialogContent>
