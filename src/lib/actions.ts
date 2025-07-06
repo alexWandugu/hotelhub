@@ -125,24 +125,23 @@ export async function updatePartner(hotelId: string, partnerId: string, prevStat
     const { name, sponsoredEmployeesCount, totalSharedAmount } = validatedFields.data;
 
     try {
+        const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
+        const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
+
+        const clientsSnapshot = await clientsQuery.get();
+        const existingClientsCount = clientsSnapshot.size;
+
+        if (sponsoredEmployeesCount < existingClientsCount) {
+            throw new Error(`Cannot set employee count to ${sponsoredEmployeesCount}. There are already ${existingClientsCount} clients for this partner.`);
+        }
+
         await db.runTransaction(async (transaction) => {
-            const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
-            
-            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
-            const clientsSnapshot = await transaction.get(clientsQuery);
-            const existingClientsCount = clientsSnapshot.size;
-
-            if (sponsoredEmployeesCount < existingClientsCount) {
-                throw new Error(`Cannot set employee count to ${sponsoredEmployeesCount}. There are already ${existingClientsCount} clients for this partner.`);
-            }
-
             transaction.update(partnerRef, { name, sponsoredEmployeesCount, totalSharedAmount });
             
             const newPeriodAllowance = sponsoredEmployeesCount > 0 ? totalSharedAmount / sponsoredEmployeesCount : 0;
             
             clientsSnapshot.docs.forEach(clientDoc => {
                 const clientRef = db.doc(`hotels/${hotelId}/clients/${clientDoc.id}`);
-                // Note: This updates the allowance mid-period. It does not reset consumption.
                 transaction.update(clientRef, { periodAllowance: newPeriodAllowance, partnerName: name });
             });
         });
@@ -166,28 +165,24 @@ export async function deletePartner(hotelId: string, partnerId: string) {
     try {
         const batch = db.batch();
 
-        // Delete associated clients
         const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
         const clientsSnapshot = await clientsQuery.get();
         clientsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
 
-        // Delete associated transactions
         const transactionsQuery = db.collection(`hotels/${hotelId}/transactions`).where('partnerId', '==', partnerId);
         const transactionsSnapshot = await transactionsQuery.get();
         transactionsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
         
-        // Delete period history
         const historyQuery = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`);
         const historySnapshot = await historyQuery.get();
         historySnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
 
-        // Delete the partner
         const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
         batch.delete(partnerRef);
         
@@ -345,34 +340,50 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   }
 
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
+  const newTransactionDate = new Date();
 
   try {
-    const newTransactionDate = new Date();
+    const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
+    const clientSnap = await clientRef.get();
+
+    if (!clientSnap.exists) {
+        return { errors: { _form: ["Client not found. The client may have been deleted."] }, message: "Transaction failed." };
+    }
+    const clientData = clientSnap.data() as Client;
+
+    const partnerSnap = await db.doc(`hotels/${hotelId}/partners/${clientData.partnerId}`).get();
+    if (!partnerSnap.exists || !partnerSnap.data()?.lastPeriodStartedAt) {
+        return { errors: { _form: ["The client's partner does not have an active billing period."] }, message: "Transaction failed." };
+    }
+    
+    const currentDebt = Number(clientData.debt || 0);
+    if (currentDebt > 0) {
+        return { errors: { _form: ["This client has an outstanding debt and cannot make new transactions."] }, message: "Transaction failed." };
+    }
+
+    const periodAllowance = Number(clientData.periodAllowance || 0);
+    const utilizedAmount = Number(clientData.utilizedAmount || 0);
+    const availableBalance = periodAllowance - utilizedAmount;
+
+    const overage = amount - availableBalance;
+    if (overage > 0 && allowOverage !== 'true') {
+        return { errors: { _form: [`This transaction will create a debt of ${overage.toFixed(2)}. This requires confirmation.`] }, message: "Transaction failed." };
+    }
+    if (overage > 300) {
+        return { errors: { _form: [`The resulting debt of ${overage.toFixed(2)} exceeds the KES 300 limit.`] }, message: "Transaction failed." };
+    }
+
     await db.runTransaction(async (transaction) => {
-      const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
-      const clientSnap = await transaction.get(clientRef);
-
-      if (!clientSnap.exists) {
-        throw new Error("Selected client could not be found.");
+      const freshClientSnap = await transaction.get(clientRef);
+      if (!freshClientSnap.exists) {
+          throw new Error("Client was deleted during transaction. Please try again.");
       }
+      const freshClientData = freshClientSnap.data() as Client;
 
-      const clientData = clientSnap.data() as Client;
+      if (freshClientData.utilizedAmount !== clientData.utilizedAmount || freshClientData.debt !== clientData.debt) {
+          throw new Error("Client data changed during transaction. Please try again.");
+      }
       
-      const currentDebt = Number(clientData.debt || 0);
-      if (currentDebt > 0) {
-          throw new Error("This client has an outstanding debt and cannot make new transactions until the next period begins.");
-      }
-
-      const periodAllowance = Number(clientData.periodAllowance || 0);
-      const utilizedAmount = Number(clientData.utilizedAmount || 0);
-      const availableBalance = periodAllowance - utilizedAmount;
-
-      const overage = amount - availableBalance;
-      
-      if (overage > 300) {
-          throw new Error(`Transaction amount exceeds the debt limit of 300 KES.`);
-      }
-
       const newUtilizedAmount = utilizedAmount + amount;
       const newDebt = overage > 0 ? overage : 0;
       
@@ -444,7 +455,6 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
                 
                 const newUtilized = utilized - transactionData.amount;
                 
-                // Recalculate debt based on the new utilized amount
                 const allowance = Number(clientData.periodAllowance || 0);
                 const newDebt = newUtilized > allowance ? newUtilized - allowance : 0;
 
@@ -473,10 +483,10 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
 
   const newStartDate = new Date();
   try {
-    await db.runTransaction(async (transaction) => {
       const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
-      const partnerSnap = await transaction.get(partnerRef);
+      const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
 
+      const partnerSnap = await partnerRef.get();
       if (!partnerSnap.exists) {
         throw new Error('Partner not found.');
       }
@@ -484,7 +494,7 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
 
       // Check if the current period is still active
       if (partnerData.lastPeriodStartedAt) {
-        const currentStartDate = partnerData.lastPeriodStartedAt.toDate();
+        const currentStartDate = (partnerData.lastPeriodStartedAt as unknown as { toDate: () => Date }).toDate();
         const expiryDate = addDays(currentStartDate, 30);
         if (new Date() < expiryDate) {
           throw new Error(
@@ -493,24 +503,21 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
         }
       }
       
-      const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
-      const clientsSnapshot = await transaction.get(clientsQuery);
-      
       const { totalSharedAmount, sponsoredEmployeesCount } = partnerData;
-
       if (sponsoredEmployeesCount <= 0) {
         throw new Error(
           'Partner has no sponsored employees to start a new period for.'
         );
       }
-
       const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
       const newEndDate = addDays(newStartDate, 30);
       
-      // Write #1: Update partner document
+      const clientsSnapshot = await clientsQuery.get();
+
+    await db.runTransaction(async (transaction) => {
+      
       transaction.update(partnerRef, { lastPeriodStartedAt: newStartDate });
 
-      // Write #2: Create period history document
       const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
       transaction.set(historyRef, {
         startDate: newStartDate,
@@ -519,7 +526,6 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
         totalSharedAmount,
       });
 
-      // Write #3: Update each client
       clientsSnapshot.docs.forEach((clientDoc) => {
         const clientData = clientDoc.data() as Client;
         const previousDebt = Number(clientData.debt || 0);
@@ -556,11 +562,13 @@ export async function getPartnerPeriodHistory(hotelId: string, partnerId: string
         }
         return snapshot.docs.map(doc => {
             const data = doc.data() as PeriodHistory;
+            const startDate = (data.startDate as unknown as { toDate: () => Date }).toDate();
+            const endDate = (data.endDate as unknown as { toDate: () => Date }).toDate();
             return {
                 ...data,
                 id: doc.id,
-                startDate: data.startDate.toDate().toISOString(),
-                endDate: data.endDate.toDate().toISOString(),
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString(),
             };
         });
     } catch (error: any) {
