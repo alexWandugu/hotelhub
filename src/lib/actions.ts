@@ -1,3 +1,4 @@
+
 'use server';
 
 import { transactionReportSummary } from '@/ai/flows/transaction-report-summary';
@@ -474,20 +475,20 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
         throw new Error('Invalid arguments provided to start a new period.');
     }
     
+    const newStartDate = new Date();
     try {
-        const newStartDate = new Date();
         await db.runTransaction(async (transaction) => {
             // All READS must be performed before any writes.
             const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
-            const partnerSnap = await transaction.get(partnerRef);
+            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
 
+            const partnerSnap = await transaction.get(partnerRef);
+            const clientsSnapshot = await transaction.get(clientsQuery);
+            
             if (!partnerSnap.exists) {
                 throw new Error("Partner not found.");
             }
             const partnerData = partnerSnap.data() as Partner;
-
-            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
-            const clientsSnapshot = await transaction.get(clientsQuery);
             
             // All LOGIC must come after all reads and before any writes.
             if (partnerData.lastPeriodStartedAt) {
