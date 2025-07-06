@@ -475,25 +475,22 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
     
     try {
         await db.runTransaction(async (transaction) => {
-            // --- All READS first ---
+            // All READS must be performed before any writes.
             const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
-            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
-            
-            const [partnerSnap, clientsSnapshot] = await Promise.all([
-                transaction.get(partnerRef),
-                transaction.get(clientsQuery)
-            ]);
+            const partnerSnap = await transaction.get(partnerRef);
 
             if (!partnerSnap.exists) {
                 throw new Error("Partner not found.");
             }
-            
-            // --- All LOGIC next ---
             const partnerData = partnerSnap.data() as Partner;
 
+            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
+            const clientsSnapshot = await transaction.get(clientsQuery);
+            
+            // All LOGIC must come after all reads and before any writes.
             if (partnerData.lastPeriodStartedAt) {
                 const startDate = partnerData.lastPeriodStartedAt.toDate();
-                const expiryDate = addDays(startDate, 30); // Period is 30 days
+                const expiryDate = addDays(startDate, 30);
 
                 if (new Date() < expiryDate) {
                     throw new Error(`Cannot start a new period. The current period expires on ${expiryDate.toLocaleDateString()}.`);
@@ -507,10 +504,11 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
             }
             
             const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
+            
+            // All WRITES must come at the end of the transaction.
             const newStartDate = new Date();
             const newEndDate = addDays(newStartDate, 30);
             
-            // --- All WRITES last ---
             const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
             transaction.set(historyRef, {
                 startDate: newStartDate,
@@ -522,13 +520,11 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
             transaction.update(partnerRef, { lastPeriodStartedAt: FieldValue.serverTimestamp() });
 
             clientsSnapshot.docs.forEach(clientDoc => {
-                const clientRef = clientDoc.ref;
                 const clientData = clientDoc.data() as Client;
-
                 const previousDebt = Number(clientData.debt || 0);
                 const newTotalAllowanceForPeriod = newPeriodBaseAllowance - previousDebt;
 
-                transaction.update(clientRef, {
+                transaction.update(clientDoc.ref, {
                     periodAllowance: newTotalAllowanceForPeriod < 0 ? 0 : newTotalAllowanceForPeriod,
                     utilizedAmount: 0,
                     debt: 0,
