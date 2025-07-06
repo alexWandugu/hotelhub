@@ -1,0 +1,45 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Hotels can be read by any authenticated user to find/join hotels.
+    // Writes are restricted because creation should be handled by a trusted server action.
+    match /hotels/{hotelId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+
+      // Helper functions to check a user's role within the hotel.
+      // This is secure because it uses the server-verified request.auth.uid.
+      function isUserAdmin() {
+        return get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid)).data.role == 'admin';
+      }
+
+      function isUserActiveMember() {
+        let userDoc = get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid));
+        return userDoc.data.status == 'active';
+      }
+
+      function isUserAssociated() {
+         return exists(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid));
+      }
+
+      // User documents can only be read by members of the same hotel.
+      // User documents can only be written to (approved/denied) by an admin of that hotel.
+      match /users/{userId} {
+        allow read: if isUserAssociated();
+        allow write: if isUserAdmin();
+      }
+
+      // All other data can only be accessed by active members of that specific hotel.
+      match /{collection}/{docId} where collection in ['partners', 'clients', 'transactions'] {
+         allow read, write: if isUserActiveMember();
+      }
+
+      // Period history is a subcollection of partners, so it inherits the same rule.
+      match /partners/{partnerId}/periodHistory/{historyId} {
+        allow read, write: if isUserActiveMember();
+      }
+    }
+  }
+}

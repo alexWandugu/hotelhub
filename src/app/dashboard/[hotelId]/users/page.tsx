@@ -1,5 +1,5 @@
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 import type { HotelUser } from '@/lib/types';
 import { UsersClient } from './users-client';
 import { notFound } from 'next/navigation';
