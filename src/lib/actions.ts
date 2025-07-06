@@ -467,76 +467,81 @@ export async function deleteTransaction(hotelId: string, transactionId: string) 
 }
 
 export async function startNewPeriod(hotelId: string, partnerId: string) {
-    if (!hotelId || !partnerId) {
-        throw new Error('Invalid arguments provided to start a new period.');
-    }
-    
-    const newStartDate = new Date();
-    try {
-        await db.runTransaction(async (transaction) => {
-            const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
-            const partnerSnap = await transaction.get(partnerRef);
-            
-            if (!partnerSnap.exists) {
-                throw new Error("Partner not found.");
-            }
-            const partnerData = partnerSnap.data() as Partner;
-            
-            if (partnerData.lastPeriodStartedAt) {
-                const startDate = partnerData.lastPeriodStartedAt.toDate();
-                const expiryDate = addDays(startDate, 30);
+  if (!hotelId || !partnerId) {
+    throw new Error('Invalid arguments provided to start a new period.');
+  }
 
-                if (new Date() < expiryDate) {
-                    throw new Error(`Cannot start a new period. The current period expires on ${expiryDate.toLocaleDateString()}.`);
-                }
-            }
+  const newStartDate = new Date();
+  try {
+    await db.runTransaction(async (transaction) => {
+      const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
+      const partnerSnap = await transaction.get(partnerRef);
 
-            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where("partnerId", "==", partnerId);
-            const clientsSnapshot = await transaction.get(clientsQuery);
-            
-            const { totalSharedAmount, sponsoredEmployeesCount } = partnerData;
-            
-            if (sponsoredEmployeesCount <= 0) {
-                 throw new Error("Partner has no sponsored employees to start a new period for.");
-            }
-            
-            const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
-            
-            const newEndDate = addDays(newStartDate, 30);
-            
-            const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
-            transaction.set(historyRef, {
-                startDate: newStartDate,
-                endDate: newEndDate,
-                sponsoredEmployeesCount,
-                totalSharedAmount,
-            });
+      if (!partnerSnap.exists) {
+        throw new Error('Partner not found.');
+      }
+      const partnerData = partnerSnap.data() as Partner;
 
-            transaction.update(partnerRef, { lastPeriodStartedAt: newStartDate });
+      // Check if the current period is still active
+      if (partnerData.lastPeriodStartedAt) {
+        const currentStartDate = partnerData.lastPeriodStartedAt.toDate();
+        const expiryDate = addDays(currentStartDate, 30);
+        if (new Date() < expiryDate) {
+          throw new Error(
+            `Cannot start a new period. The current period expires on ${expiryDate.toLocaleDateString()}.`
+          );
+        }
+      }
+      
+      const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
+      const clientsSnapshot = await transaction.get(clientsQuery);
+      
+      const { totalSharedAmount, sponsoredEmployeesCount } = partnerData;
 
-            clientsSnapshot.docs.forEach(clientDoc => {
-                const clientData = clientDoc.data() as Client;
-                const previousDebt = Number(clientData.debt || 0);
-                const newTotalAllowanceForPeriod = newPeriodBaseAllowance - previousDebt;
+      if (sponsoredEmployeesCount <= 0) {
+        throw new Error(
+          'Partner has no sponsored employees to start a new period for.'
+        );
+      }
 
-                transaction.update(clientDoc.ref, {
-                    periodAllowance: newTotalAllowanceForPeriod < 0 ? 0 : newTotalAllowanceForPeriod,
-                    utilizedAmount: 0,
-                    debt: 0,
-                });
-            });
+      const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
+      const newEndDate = addDays(newStartDate, 30);
+      
+      // Write #1: Update partner document
+      transaction.update(partnerRef, { lastPeriodStartedAt: newStartDate });
+
+      // Write #2: Create period history document
+      const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
+      transaction.set(historyRef, {
+        startDate: newStartDate,
+        endDate: newEndDate,
+        sponsoredEmployeesCount,
+        totalSharedAmount,
+      });
+
+      // Write #3: Update each client
+      clientsSnapshot.docs.forEach((clientDoc) => {
+        const clientData = clientDoc.data() as Client;
+        const previousDebt = Number(clientData.debt || 0);
+        const newTotalAllowanceForPeriod = newPeriodBaseAllowance - previousDebt;
+
+        transaction.update(clientDoc.ref, {
+          periodAllowance: newTotalAllowanceForPeriod < 0 ? 0 : newTotalAllowanceForPeriod,
+          utilizedAmount: 0,
+          debt: 0,
         });
+      });
+    });
 
-        revalidatePath(`/dashboard/${hotelId}/partners`);
-        revalidatePath(`/dashboard/${hotelId}/clients`);
-        revalidatePath(`/dashboard/${hotelId}/transactions`);
-        revalidatePath(`/dashboard/${hotelId}/new-transaction`);
-        revalidatePath(`/dashboard/${hotelId}/reports`);
-
-    } catch (error: any) {
-        console.error("Error starting new period:", error);
-        throw new Error(`Failed to start new period: ${error.message}`);
-    }
+    revalidatePath(`/dashboard/${hotelId}/partners`);
+    revalidatePath(`/dashboard/${hotelId}/clients`);
+    revalidatePath(`/dashboard/${hotelId}/transactions`);
+    revalidatePath(`/dashboard/${hotelId}/new-transaction`);
+    revalidatePath(`/dashboard/${hotelId}/reports`);
+  } catch (error: any) {
+    console.error('Error starting new period:', error);
+    throw new Error(`Failed to start new period: ${error.message}`);
+  }
 }
 
 export async function getPartnerPeriodHistory(hotelId: string, partnerId: string): Promise<(Omit<PeriodHistory, 'startDate' | 'endDate'> & { id: string, startDate: string, endDate: string })[]> {
