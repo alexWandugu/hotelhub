@@ -339,50 +339,52 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
 
   try {
-    // Step 1: Perform all reads BEFORE the transaction.
     const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
-    const clientSnap = await clientRef.get();
 
-    if (!clientSnap.exists) {
-      return { errors: { _form: ["Client not found. They may have been deleted."] }, message: "Transaction failed." };
-    }
-    const clientData = clientSnap.data() as Client;
-
-    const partnerSnap = await db.doc(`hotels/${hotelId}/partners/${clientData.partnerId}`).get();
-    if (!partnerSnap.exists || !partnerSnap.data()?.lastPeriodStartedAt) {
-      return { errors: { _form: ["The client's partner does not have an active billing period."] }, message: "Transaction failed." };
-    }
-
-    // Step 2: Perform all business logic checks on the pre-fetched data.
-    if (clientData.debt > 0) {
-      return { errors: { _form: ["This client has an outstanding debt and cannot make new transactions."] }, message: "Transaction failed." };
-    }
-
-    const availableBalance = clientData.periodAllowance - clientData.utilizedAmount;
-    const overage = amount - availableBalance;
-
-    if (overage > 300) {
-      return { errors: { _form: [`The resulting debt of ${overage.toFixed(2)} exceeds the KES 300 limit.`] }, message: "Transaction failed." };
-    }
-
-    if (overage > 0 && allowOverage !== 'true') {
-      return { errors: { _form: [`This transaction will create a debt of ${overage.toFixed(2)}. This requires confirmation from the user.`] }, message: "Transaction failed." };
-    }
-
-    // Step 3: Execute a transaction containing ONLY writes.
-    const newUtilizedAmount = clientData.utilizedAmount + amount;
-    const newDebt = overage > 0 ? overage : 0;
-    
     await db.runTransaction(async (transaction) => {
+      // 1. READ all necessary documents INSIDE the transaction.
+      const clientSnap = await transaction.get(clientRef);
+      if (!clientSnap.exists) {
+        throw new Error("Client not found. They may have been deleted.");
+      }
+      const clientData = clientSnap.data() as Client;
+
+      const partnerRef = db.doc(`hotels/${hotelId}/partners/${clientData.partnerId}`);
+      const partnerSnap = await transaction.get(partnerRef);
+      if (!partnerSnap.exists || !partnerSnap.data()?.lastPeriodStartedAt) {
+        throw new Error("The client's partner does not have an active billing period.");
+      }
+
+      // 2. PERFORM all business logic checks on the fresh data.
+      if (clientData.debt > 0) {
+        throw new Error("This client has an outstanding debt and cannot make new transactions.");
+      }
+
+      const availableBalance = clientData.periodAllowance - clientData.utilizedAmount;
+      const overage = amount - availableBalance;
+
+      if (overage > 300) {
+        throw new Error(`The resulting debt of ${overage.toFixed(2)} exceeds the KES 300 limit.`);
+      }
+
+      if (overage > 0 && allowOverage !== 'true') {
+        throw new Error("This transaction requires confirmation for creating new debt. Please try again.");
+      }
+      
+      // 3. If all checks pass, prepare and perform WRITE operations.
+      const newUtilizedAmount = clientData.utilizedAmount + amount;
+      const newDebt = overage > 0 ? overage : 0;
+      const newTransactionDate = new Date(); // Use a consistent timestamp for all writes.
+
       const newTransactionRef = db.collection(`hotels/${hotelId}/transactions`).doc();
       
-      // Write 1: Update the client's balance and debt.
+      // Write 1: Update client
       transaction.update(clientRef, { 
         utilizedAmount: newUtilizedAmount,
         debt: newDebt,
       });
       
-      // Write 2: Create the new transaction record.
+      // Write 2: Create transaction record
       transaction.set(newTransactionRef, {
         clientId: clientId,
         clientName: clientData.name,
@@ -390,12 +392,12 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         partnerName: clientData.partnerName,
         amount: amount,
         status: 'completed',
-        createdAt: new Date(),
+        createdAt: newTransactionDate,
         receiptNo: receiptNo,
       });
     });
     
-    // Step 4: Revalidate paths and return success.
+    // 4. If transaction succeeds, revalidate and return success.
     revalidatePath(`/dashboard/${hotelId}/transactions`);
     revalidatePath(`/dashboard/${hotelId}/new-transaction`);
     revalidatePath(`/dashboard/${hotelId}/clients`);
@@ -403,7 +405,9 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     return { errors: null, message: "Transaction recorded successfully!" };
 
   } catch (error: any) {
+    // 5. If transaction fails (because we threw an error), catch it and return a user-friendly message.
     console.error("Transaction Error:", error);
+    // Return the specific error message we threw from inside the transaction.
     return { errors: { _form: [error.message] }, message: "Failed to record transaction." };
   }
 }
