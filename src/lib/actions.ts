@@ -342,7 +342,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
 
     await db.runTransaction(async (transaction) => {
-      // 1. READ all necessary documents INSIDE the transaction.
       const clientSnap = await transaction.get(clientRef);
       if (!clientSnap.exists) {
         throw new Error("Client not found. They may have been deleted.");
@@ -355,7 +354,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         throw new Error("The client's partner does not have an active billing period.");
       }
 
-      // 2. PERFORM all business logic checks on the fresh data.
       if (clientData.debt > 0) {
         throw new Error("This client has an outstanding debt and cannot make new transactions.");
       }
@@ -371,20 +369,17 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
         throw new Error("This transaction requires confirmation for creating new debt. Please try again.");
       }
       
-      // 3. If all checks pass, prepare and perform WRITE operations.
       const newUtilizedAmount = clientData.utilizedAmount + amount;
       const newDebt = overage > 0 ? overage : 0;
-      const newTransactionDate = new Date(); // Use a consistent timestamp for all writes.
+      const newTransactionDate = new Date();
 
       const newTransactionRef = db.collection(`hotels/${hotelId}/transactions`).doc();
       
-      // Write 1: Update client
       transaction.update(clientRef, { 
         utilizedAmount: newUtilizedAmount,
         debt: newDebt,
       });
       
-      // Write 2: Create transaction record
       transaction.set(newTransactionRef, {
         clientId: clientId,
         clientName: clientData.name,
@@ -397,7 +392,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
       });
     });
     
-    // 4. If transaction succeeds, revalidate and return success.
     revalidatePath(`/dashboard/${hotelId}/transactions`);
     revalidatePath(`/dashboard/${hotelId}/new-transaction`);
     revalidatePath(`/dashboard/${hotelId}/clients`);
@@ -405,9 +399,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     return { errors: null, message: "Transaction recorded successfully!" };
 
   } catch (error: any) {
-    // 5. If transaction fails (because we threw an error), catch it and return a user-friendly message.
     console.error("Transaction Error:", error);
-    // Return the specific error message we threw from inside the transaction.
     return { errors: { _form: [error.message] }, message: "Failed to record transaction." };
   }
 }
@@ -479,15 +471,15 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
 
   try {
     const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
+    const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
     
-    // Fetch all necessary data BEFORE the transaction.
+    // Perform all reads before the transaction
     const partnerSnap = await partnerRef.get();
     if (!partnerSnap.exists) {
       throw new Error('Partner not found.');
     }
     const partnerData = partnerSnap.data() as Partner;
 
-    // Check if the current period is still active
     if (partnerData.lastPeriodStartedAt) {
       const currentStartDate = (partnerData.lastPeriodStartedAt as any).toDate();
       const expiryDate = addDays(currentStartDate, 30);
@@ -500,43 +492,41 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
     
     const { totalSharedAmount, sponsoredEmployeesCount } = partnerData;
     if (sponsoredEmployeesCount <= 0) {
-      throw new Error(
-        'Partner has no sponsored employees to start a new period for.'
-      );
+      throw new Error('Partner has no sponsored employees to start a new period for.');
     }
     
-    const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
     const clientsSnapshot = await clientsQuery.get();
     
     const newStartDate = new Date();
     const newEndDate = addDays(newStartDate, 30);
     const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
 
-    // Execute a write-only transaction
-    await db.runTransaction(async (transaction) => {
-      
-      transaction.update(partnerRef, { lastPeriodStartedAt: newStartDate });
+    // Use a write-only transaction
+    const batch = db.batch();
 
-      const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
-      transaction.set(historyRef, {
-        startDate: newStartDate,
-        endDate: newEndDate,
-        sponsoredEmployeesCount,
-        totalSharedAmount,
-      });
+    batch.update(partnerRef, { lastPeriodStartedAt: newStartDate });
 
-      clientsSnapshot.docs.forEach((clientDoc) => {
-        const clientData = clientDoc.data() as Client;
-        const previousDebt = Number(clientData.debt || 0);
-        const newTotalAllowanceForPeriod = newPeriodBaseAllowance - previousDebt;
+    const historyRef = db.collection(`hotels/${hotelId}/partners/${partnerId}/periodHistory`).doc();
+    batch.set(historyRef, {
+      startDate: newStartDate,
+      endDate: newEndDate,
+      sponsoredEmployeesCount,
+      totalSharedAmount,
+    });
 
-        transaction.update(clientDoc.ref, {
-          periodAllowance: newTotalAllowanceForPeriod < 0 ? 0 : newTotalAllowanceForPeriod,
-          utilizedAmount: 0,
-          debt: 0,
-        });
+    clientsSnapshot.docs.forEach((clientDoc) => {
+      const clientData = clientDoc.data() as Client;
+      const previousDebt = Number(clientData.debt || 0);
+      const newTotalAllowanceForPeriod = newPeriodBaseAllowance - previousDebt;
+
+      batch.update(clientDoc.ref, {
+        periodAllowance: newTotalAllowanceForPeriod < 0 ? 0 : newTotalAllowanceForPeriod,
+        utilizedAmount: 0,
+        debt: 0,
       });
     });
+
+    await batch.commit();
 
     revalidatePath(`/dashboard/${hotelId}/partners`);
     revalidatePath(`/dashboard/${hotelId}/clients`);
