@@ -339,7 +339,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
   
   try {
-    // --- READS FIRST ---
+    // --- Step 1: Pre-Transaction READS ---
     const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
     const clientSnap = await clientRef.get();
 
@@ -356,7 +356,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     }
     const partnerData = partnerSnap.data() as Partner;
 
-    // --- VALIDATIONS SECOND ---
+    // --- Step 2: Pre-Transaction VALIDATIONS ---
     if (!partnerData.lastPeriodStartedAt) {
       return { errors: { _form: ["The client's partner does not have an active billing period."] }, message: "Failed to record transaction." };
     }
@@ -372,11 +372,11 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     }
 
     if (overage > 0 && allowOverage !== 'true') {
-      // This case should be handled by the client, but is a safety net.
+      // This case is a safety net. The client-side should prevent this.
       return { errors: { _form: ["This transaction requires confirmation for creating new debt. Please try again."] }, message: "Failed to record transaction." };
     }
     
-    // --- WRITES LAST (ATOMICALLY) ---
+    // --- Step 3: Atomic BATCH WRITE ---
     const batch = db.batch();
     
     const newUtilizedAmount = clientData.utilizedAmount + amount;
@@ -401,7 +401,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     
     await batch.commit();
 
-    // --- SUCCESS ---
+    // --- Success ---
     revalidatePath(`/dashboard/${hotelId}/transactions`);
     revalidatePath(`/dashboard/${hotelId}/new-transaction`);
     revalidatePath(`/dashboard/${hotelId}/clients`);
@@ -411,7 +411,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     return { errors: null, message: "Transaction recorded successfully!" };
 
   } catch (error: any) {
-    // --- FAILURE ---
+    // --- Failure ---
     console.error("addTransaction failed:", error);
     return { 
       errors: { _form: [error.message || 'An unexpected server error occurred.'] },
