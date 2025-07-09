@@ -1,4 +1,3 @@
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase-admin';
 import type { Timestamp } from 'firebase-admin/firestore';
 import { ClientsClient } from './clients-client';
@@ -7,11 +6,10 @@ import { notFound } from 'next/navigation';
 
 async function getClients(hotelId: string): Promise<Client[]> {
     try {
-        const clientsQuery = query(
-            collection(db, `hotels/${hotelId}/clients`),
-            orderBy('createdAt', 'desc')
-        );
-        const querySnapshot = await getDocs(clientsQuery);
+        const clientsQuery = db
+            .collection(`hotels/${hotelId}/clients`)
+            .orderBy('createdAt', 'desc');
+        const querySnapshot = await clientsQuery.get();
         const clients = querySnapshot.docs.map((doc) => ({
             id: doc.id,
             ...doc.data(),
@@ -25,10 +23,8 @@ async function getClients(hotelId: string): Promise<Client[]> {
 
 async function getPartners(hotelId: string): Promise<Partner[]> {
     try {
-        const partnersQuery = query(
-            collection(db, `hotels/${hotelId}/partners`)
-        );
-        const querySnapshot = await getDocs(partnersQuery);
+        const partnersQuery = db.collection(`hotels/${hotelId}/partners`);
+        const querySnapshot = await partnersQuery.get();
         const partners = querySnapshot.docs.map((doc) => ({
             id: doc.id,
             ...doc.data(),

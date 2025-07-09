@@ -1,4 +1,3 @@
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase-admin';
 import { ReportsClient } from './reports-client';
 import type { Client, Partner } from '@/lib/types';
@@ -6,12 +5,14 @@ import { notFound } from 'next/navigation';
 
 async function getReportData(hotelId: string) {
     try {
-        const partnersQuery = query(collection(db, `hotels/${hotelId}/partners`));
-        const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('debt', '>', 0));
+        const partnersQuery = db.collection(`hotels/${hotelId}/partners`);
+        const clientsQuery = db
+            .collection(`hotels/${hotelId}/clients`)
+            .where('debt', '>', 0);
 
         const [partnersSnapshot, clientsSnapshot] = await Promise.all([
-            getDocs(partnersQuery),
-            getDocs(clientsSnapshot)
+            partnersQuery.get(),
+            clientsQuery.get()
         ]);
 
         const partners = partnersSnapshot.docs.map(doc => {
@@ -43,10 +44,10 @@ async function getReportData(hotelId: string) {
 
 async function getHotelName(hotelId: string): Promise<string> {
     try {
-        const hotelDocRef = doc(db, 'hotels', hotelId);
-        const hotelDoc = await getDoc(hotelDocRef);
+        const hotelDocRef = db.doc(`hotels/${hotelId}`);
+        const hotelDoc = await hotelDocRef.get();
         if (hotelDoc.exists()) {
-            return hotelDoc.data().name as string;
+            return hotelDoc.data()!.name as string;
         }
         return 'Hotel Report';
     } catch (error) {

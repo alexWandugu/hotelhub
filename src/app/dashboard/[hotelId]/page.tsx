@@ -1,4 +1,3 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase-admin';
 import type { Timestamp } from 'firebase-admin/firestore';
 import AdminDashboard from './admin-dashboard';
@@ -8,17 +7,16 @@ import type { Transaction } from '@/lib/types';
 
 async function getDashboardData(hotelId: string) {
     try {
-        const transactionsQuery = query(collection(db, `hotels/${hotelId}/transactions`));
+        const transactionsQuery = db.collection(`hotels/${hotelId}/transactions`);
 
         const thirtyDaysAgo = subMonths(new Date(), 1);
-        const newClientsQuery = query(
-            collection(db, `hotels/${hotelId}/clients`),
-            where('createdAt', '>=', thirtyDaysAgo)
-        );
+        const newClientsQuery = db
+            .collection(`hotels/${hotelId}/clients`)
+            .where('createdAt', '>=', thirtyDaysAgo);
 
         const [transactionsSnapshot, newClientsSnapshot] = await Promise.all([
-            getDocs(transactionsQuery),
-            getDocs(newClientsQuery),
+            transactionsQuery.get(),
+            newClientsQuery.get(),
         ]);
 
         const transactions = transactionsSnapshot.docs.map(doc => doc.data() as Transaction);

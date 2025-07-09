@@ -1,5 +1,4 @@
 import NewTransactionClient from './new-transaction-client';
-import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import type { Timestamp } from 'firebase-admin/firestore';
 import { db } from '@/lib/firebase-admin';
 import type { Transaction, Client, Partner } from "@/lib/types";
@@ -21,14 +20,14 @@ async function getInitialData(hotelId: string): Promise<{
     initialClients: ClientForDropdown[];
 }> {
     try {
-        const partnersQuery = query(collection(db, `hotels/${hotelId}/partners`), where('lastPeriodStartedAt', '!=', null));
-        const partnersSnapshot = await getDocs(partnersQuery);
+        const partnersQuery = db.collection(`hotels/${hotelId}/partners`).where('lastPeriodStartedAt', '!=', null);
+        const partnersSnapshot = await partnersQuery.get();
         const activePartnerIds = partnersSnapshot.docs.map(p => p.id);
 
         let initialClients: ClientForDropdown[] = [];
         if (activePartnerIds.length > 0) {
-            const clientsQuery = query(collection(db, `hotels/${hotelId}/clients`), where('partnerId', 'in', activePartnerIds));
-            const clientsSnapshot = await getDocs(clientsQuery);
+            const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', 'in', activePartnerIds);
+            const clientsSnapshot = await clientsQuery.get();
             initialClients = clientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client))
                 .map(c => ({
                     id: c.id, 
@@ -42,8 +41,8 @@ async function getInitialData(hotelId: string): Promise<{
             initialClients.sort((a, b) => a.name.localeCompare(b.name));
         }
 
-        const transactionsQuery = query(collection(db, `hotels/${hotelId}/transactions`), orderBy('createdAt', 'desc'));
-        const transactionsSnapshot = await getDocs(transactionsQuery);
+        const transactionsQuery = db.collection(`hotels/${hotelId}/transactions`).orderBy('createdAt', 'desc');
+        const transactionsSnapshot = await transactionsQuery.get();
         const initialTransactions = transactionsSnapshot.docs.map(doc => {
             const data = doc.data() as Transaction;
             return {

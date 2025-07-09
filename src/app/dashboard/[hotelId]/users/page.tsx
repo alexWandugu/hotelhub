@@ -1,4 +1,3 @@
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase-admin';
 import type { HotelUser } from '@/lib/types';
 import { UsersClient } from './users-client';
@@ -6,11 +5,10 @@ import { notFound } from 'next/navigation';
 
 async function getUsers(hotelId: string): Promise<HotelUser[]> {
     try {
-      const usersQuery = query(
-        collection(db, `hotels/${hotelId}/users`),
-        orderBy('requestedAt', 'desc')
-      );
-      const querySnapshot = await getDocs(usersQuery);
+      const usersQuery = db
+        .collection(`hotels/${hotelId}/users`)
+        .orderBy('requestedAt', 'desc');
+      const querySnapshot = await usersQuery.get();
       const fetchedUsers = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
