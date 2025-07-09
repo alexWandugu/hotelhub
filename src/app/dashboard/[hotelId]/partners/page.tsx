@@ -1,5 +1,6 @@
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
+import type { Timestamp } from 'firebase-admin/firestore';
 import { PartnersClient } from './partners-client';
 import type { Partner, Client } from '@/lib/types';
 import { notFound } from 'next/navigation';
@@ -51,15 +52,15 @@ export default async function PartnersPage({ params }: { params: { hotelId: stri
 
   const partners = partnersData.map(partner => ({
     ...partner,
-    createdAt: partner.createdAt.toDate().toISOString(),
+    createdAt: (partner.createdAt as Timestamp).toDate().toISOString(),
     lastPeriodStartedAt: partner.lastPeriodStartedAt
-      ? partner.lastPeriodStartedAt.toDate().toISOString()
+      ? (partner.lastPeriodStartedAt as Timestamp).toDate().toISOString()
       : undefined,
   }));
   
   const clients = clientsData.map(client => ({
     ...client,
-    createdAt: client.createdAt.toDate().toISOString(),
+    createdAt: (client.createdAt as Timestamp).toDate().toISOString(),
   }));
 
 

@@ -1,5 +1,5 @@
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 import { ReportsClient } from './reports-client';
 import type { Client, Partner } from '@/lib/types';
 import { notFound } from 'next/navigation';
@@ -11,7 +11,7 @@ async function getReportData(hotelId: string) {
 
         const [partnersSnapshot, clientsSnapshot] = await Promise.all([
             getDocs(partnersQuery),
-            getDocs(clientsQuery)
+            getDocs(clientsSnapshot)
         ]);
 
         const partners = partnersSnapshot.docs.map(doc => {

@@ -1,6 +1,7 @@
 import NewTransactionClient from './new-transaction-client';
-import { collection, getDocs, orderBy, query, where, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
+import type { Timestamp } from 'firebase-admin/firestore';
+import { db } from '@/lib/firebase-admin';
 import type { Transaction, Client, Partner } from "@/lib/types";
 import { notFound } from 'next/navigation';
 

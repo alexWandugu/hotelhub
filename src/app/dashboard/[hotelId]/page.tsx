@@ -1,5 +1,6 @@
-import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase-admin';
+import type { Timestamp } from 'firebase-admin/firestore';
 import AdminDashboard from './admin-dashboard';
 import { notFound } from 'next/navigation';
 import { subMonths, format, getMonth, getYear } from 'date-fns';

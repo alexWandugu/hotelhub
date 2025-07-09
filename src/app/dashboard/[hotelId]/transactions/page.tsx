@@ -1,5 +1,6 @@
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
+import type { Timestamp } from 'firebase-admin/firestore';
 import type { Transaction, Client, Partner } from "@/lib/types";
 import { TransactionsClient } from './transactions-client';
 import { notFound } from 'next/navigation';
@@ -65,7 +66,7 @@ export default async function TransactionsPage({ params }: { params: { hotelId: 
 
   const transactions = transactionsData.map(t => ({
     ...t,
-    createdAt: t.createdAt.toDate().toISOString(),
+    createdAt: (t.createdAt as Timestamp).toDate().toISOString(),
   }));
 
   const partnersWithActivePeriodIds = partnersData

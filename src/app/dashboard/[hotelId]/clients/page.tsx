@@ -1,5 +1,6 @@
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
+import type { Timestamp } from 'firebase-admin/firestore';
 import { ClientsClient } from './clients-client';
 import type { Client, Partner } from '@/lib/types';
 import { notFound } from 'next/navigation';
@@ -51,7 +52,7 @@ export default async function ClientsPage({ params }: { params: { hotelId: strin
 
   const serializedClients = clientsData.map(client => ({
     ...client,
-    createdAt: client.createdAt.toDate().toISOString(),
+    createdAt: (client.createdAt as Timestamp).toDate().toISOString(),
     // Ensure numeric values for calculations
     periodAllowance: Number(client.periodAllowance || 0),
     utilizedAmount: Number(client.utilizedAmount || 0),
@@ -60,9 +61,9 @@ export default async function ClientsPage({ params }: { params: { hotelId: strin
 
   const serializedPartners = partnersData.map(partner => ({
     ...partner,
-    createdAt: partner.createdAt.toDate().toISOString(),
+    createdAt: (partner.createdAt as Timestamp).toDate().toISOString(),
     lastPeriodStartedAt: partner.lastPeriodStartedAt
-      ? partner.lastPeriodStartedAt.toDate().toISOString()
+      ? (partner.lastPeriodStartedAt as Timestamp).toDate().toISOString()
       : undefined,
   }));
 
