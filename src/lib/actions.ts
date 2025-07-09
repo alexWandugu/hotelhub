@@ -337,72 +337,61 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   }
 
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
-  const newTransactionDate = new Date();
-
+  
   try {
     const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
-    
-    // --- Pre-transaction read and validation ---
-    const initialClientSnap = await clientRef.get();
-    if (!initialClientSnap.exists) {
+    const clientSnap = await clientRef.get();
+
+    if (!clientSnap.exists) {
         throw new Error("Client not found. They may have been deleted.");
     }
-    const clientDataForPartner = initialClientSnap.data() as Client;
+    const clientData = clientSnap.data() as Client;
 
-    const partnerRef = db.doc(`hotels/${hotelId}/partners/${clientDataForPartner.partnerId}`);
+    const partnerRef = db.doc(`hotels/${hotelId}/partners/${clientData.partnerId}`);
     const partnerSnap = await partnerRef.get();
     if (!partnerSnap.exists || !partnerSnap.data()?.lastPeriodStartedAt) {
       throw new Error("The client's partner does not have an active billing period.");
     }
-    // --- End of pre-transaction checks ---
+    
+    if (clientData.debt > 0) {
+      throw new Error("This client has an outstanding debt and cannot make new transactions.");
+    }
 
+    const availableBalance = clientData.periodAllowance - clientData.utilizedAmount;
+    const overage = amount - availableBalance;
 
-    await db.runTransaction(async (transaction) => {
-      // Re-read client data inside the transaction to ensure atomicity and lock the document
-      const clientSnap = await transaction.get(clientRef);
-      if (!clientSnap.exists) {
-        throw new Error("Client not found. They may have been deleted during the transaction.");
-      }
-      const clientData = clientSnap.data() as Client;
-      
-      // Perform final validations on fresh data
-      if (clientData.debt > 0) {
-        throw new Error("This client has an outstanding debt and cannot make new transactions.");
-      }
+    if (overage > 300) {
+      throw new Error(`The resulting debt of KES ${overage.toFixed(2)} exceeds the KES 300 limit.`);
+    }
 
-      const availableBalance = clientData.periodAllowance - clientData.utilizedAmount;
-      const overage = amount - availableBalance;
+    if (overage > 0 && allowOverage !== 'true') {
+      throw new Error("This transaction requires confirmation for creating new debt. Please try again.");
+    }
 
-      if (overage > 300) {
-        throw new Error(`The resulting debt of ${overage.toFixed(2)} exceeds the KES 300 limit.`);
-      }
+    const newUtilizedAmount = clientData.utilizedAmount + amount;
+    const newDebt = overage > 0 ? overage : 0;
+    const newTransactionRef = db.collection(`hotels/${hotelId}/transactions`).doc();
+    const newTransactionDate = new Date();
 
-      if (overage > 0 && allowOverage !== 'true') {
-        throw new Error("This transaction requires confirmation for creating new debt. Please try again.");
-      }
-      
-      const newUtilizedAmount = clientData.utilizedAmount + amount;
-      const newDebt = overage > 0 ? overage : 0;
-      
-      const newTransactionRef = db.collection(`hotels/${hotelId}/transactions`).doc();
-      
-      // Perform write operations
-      transaction.update(clientRef, { 
-        utilizedAmount: newUtilizedAmount,
-        debt: newDebt,
-      });
-      
-      transaction.set(newTransactionRef, {
-        clientId: clientId,
-        clientName: clientData.name,
-        partnerId: clientData.partnerId,
-        partnerName: clientData.partnerName,
-        amount: amount,
-        status: 'completed',
-        createdAt: newTransactionDate,
-        receiptNo: receiptNo,
-      });
+    const batch = db.batch();
+
+    batch.update(clientRef, {
+      utilizedAmount: newUtilizedAmount,
+      debt: newDebt,
     });
+    
+    batch.set(newTransactionRef, {
+      clientId: clientId,
+      clientName: clientData.name,
+      partnerId: clientData.partnerId,
+      partnerName: clientData.partnerName,
+      amount: amount,
+      status: 'completed',
+      createdAt: newTransactionDate,
+      receiptNo: receiptNo,
+    });
+    
+    await batch.commit();
     
     revalidatePath(`/dashboard/${hotelId}/transactions`);
     revalidatePath(`/dashboard/${hotelId}/new-transaction`);
