@@ -337,23 +337,35 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   }
 
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
+  const newTransactionDate = new Date();
 
   try {
     const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
+    
+    // --- Pre-transaction read and validation ---
+    const initialClientSnap = await clientRef.get();
+    if (!initialClientSnap.exists) {
+        throw new Error("Client not found. They may have been deleted.");
+    }
+    const clientDataForPartner = initialClientSnap.data() as Client;
+
+    const partnerRef = db.doc(`hotels/${hotelId}/partners/${clientDataForPartner.partnerId}`);
+    const partnerSnap = await partnerRef.get();
+    if (!partnerSnap.exists || !partnerSnap.data()?.lastPeriodStartedAt) {
+      throw new Error("The client's partner does not have an active billing period.");
+    }
+    // --- End of pre-transaction checks ---
+
 
     await db.runTransaction(async (transaction) => {
+      // Re-read client data inside the transaction to ensure atomicity and lock the document
       const clientSnap = await transaction.get(clientRef);
       if (!clientSnap.exists) {
-        throw new Error("Client not found. They may have been deleted.");
+        throw new Error("Client not found. They may have been deleted during the transaction.");
       }
       const clientData = clientSnap.data() as Client;
-
-      const partnerRef = db.doc(`hotels/${hotelId}/partners/${clientData.partnerId}`);
-      const partnerSnap = await transaction.get(partnerRef);
-      if (!partnerSnap.exists || !partnerSnap.data()?.lastPeriodStartedAt) {
-        throw new Error("The client's partner does not have an active billing period.");
-      }
-
+      
+      // Perform final validations on fresh data
       if (clientData.debt > 0) {
         throw new Error("This client has an outstanding debt and cannot make new transactions.");
       }
@@ -371,10 +383,10 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
       
       const newUtilizedAmount = clientData.utilizedAmount + amount;
       const newDebt = overage > 0 ? overage : 0;
-      const newTransactionDate = new Date();
-
+      
       const newTransactionRef = db.collection(`hotels/${hotelId}/transactions`).doc();
       
+      // Perform write operations
       transaction.update(clientRef, { 
         utilizedAmount: newUtilizedAmount,
         debt: newDebt,
