@@ -335,37 +335,38 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   if (!validatedFields.success) {
     return { errors: validatedFields.error.flatten().fieldErrors, message: "Validation failed." };
   }
-
-  const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
   
+  const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
+
   try {
     const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
     const clientSnap = await clientRef.get();
 
     if (!clientSnap.exists) {
-        throw new Error("Client not found. They may have been deleted.");
+      return { errors: { _form: ["Client not found. They may have been deleted."] }, message: "Failed to record transaction." };
     }
     const clientData = clientSnap.data() as Client;
 
     const partnerRef = db.doc(`hotels/${hotelId}/partners/${clientData.partnerId}`);
     const partnerSnap = await partnerRef.get();
+    
     if (!partnerSnap.exists || !partnerSnap.data()?.lastPeriodStartedAt) {
-      throw new Error("The client's partner does not have an active billing period.");
+      return { errors: { _form: ["The client's partner does not have an active billing period."] }, message: "Failed to record transaction." };
     }
     
     if (clientData.debt > 0) {
-      throw new Error("This client has an outstanding debt and cannot make new transactions.");
+      return { errors: { _form: ["This client has an outstanding debt and cannot make new transactions."] }, message: "Failed to record transaction." };
     }
-
+    
     const availableBalance = clientData.periodAllowance - clientData.utilizedAmount;
     const overage = amount - availableBalance;
 
     if (overage > 300) {
-      throw new Error(`The resulting debt of KES ${overage.toFixed(2)} exceeds the KES 300 limit.`);
+       return { errors: { _form: [`The resulting debt of KES ${overage.toFixed(2)} exceeds the KES 300 limit.`] }, message: "Failed to record transaction." };
     }
-
+    
     if (overage > 0 && allowOverage !== 'true') {
-      throw new Error("This transaction requires confirmation for creating new debt. Please try again.");
+        return { errors: { _form: ["This transaction requires confirmation for creating new debt. Please try again."] }, message: "Failed to record transaction." };
     }
 
     const newUtilizedAmount = clientData.utilizedAmount + amount;
