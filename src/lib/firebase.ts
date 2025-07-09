@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAuth, GoogleAuthProvider, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -16,5 +16,20 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
+
+if (process.env.NODE_ENV === 'development') {
+    try {
+        connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+        connectFirestoreEmulator(db, '127.0.0.1', 8080);
+    } catch (error) {
+        // This can happen with Next.js hot-reloading.
+        // If it's already connected, we can ignore the error.
+        if (error instanceof Error && error.message.includes('already connected')) {
+            // console.log("Emulators already connected.");
+        } else {
+            console.error("Error connecting to Firebase emulators:", error);
+        }
+    }
+}
 
 export { app, auth, googleProvider, db };
