@@ -337,72 +337,82 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   }
   
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
-
+  
   try {
-    const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
-    const clientSnap = await clientRef.get();
-
-    if (!clientSnap.exists) {
-      return { errors: { _form: ["Client not found. They may have been deleted."] }, message: "Failed to record transaction." };
-    }
-    const clientData = clientSnap.data() as Client;
-
-    const partnerRef = db.doc(`hotels/${hotelId}/partners/${clientData.partnerId}`);
-    const partnerSnap = await partnerRef.get();
-    
-    if (!partnerSnap.exists || !partnerSnap.data()?.lastPeriodStartedAt) {
-      return { errors: { _form: ["The client's partner does not have an active billing period."] }, message: "Failed to record transaction." };
-    }
-    
-    if (clientData.debt > 0) {
-      return { errors: { _form: ["This client has an outstanding debt and cannot make new transactions."] }, message: "Failed to record transaction." };
-    }
-    
-    const availableBalance = clientData.periodAllowance - clientData.utilizedAmount;
-    const overage = amount - availableBalance;
-
-    if (overage > 300) {
-       return { errors: { _form: [`The resulting debt of KES ${overage.toFixed(2)} exceeds the KES 300 limit.`] }, message: "Failed to record transaction." };
-    }
-    
-    if (overage > 0 && allowOverage !== 'true') {
-        return { errors: { _form: ["This transaction requires confirmation for creating new debt. Please try again."] }, message: "Failed to record transaction." };
-    }
-
-    const newUtilizedAmount = clientData.utilizedAmount + amount;
-    const newDebt = overage > 0 ? overage : 0;
     const newTransactionRef = db.collection(`hotels/${hotelId}/transactions`).doc();
-    const newTransactionDate = new Date();
 
-    const batch = db.batch();
+    await db.runTransaction(async (t) => {
+      // --- ALL READS FIRST ---
+      const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
+      const clientSnap = await t.get(clientRef);
+      if (!clientSnap.exists) {
+        throw new Error("Client not found. They may have been deleted.");
+      }
+      const clientData = clientSnap.data() as Client;
+      
+      const partnerRef = db.doc(`hotels/${hotelId}/partners/${clientData.partnerId}`);
+      const partnerSnap = await t.get(partnerRef);
+      if (!partnerSnap.exists) {
+        throw new Error("The client's partner company could not be found.");
+      }
+      const partnerData = partnerSnap.data() as Partner;
 
-    batch.update(clientRef, {
-      utilizedAmount: newUtilizedAmount,
-      debt: newDebt,
+      // --- ALL VALIDATIONS SECOND ---
+      if (!partnerData.lastPeriodStartedAt) {
+        throw new Error("The client's partner does not have an active billing period.");
+      }
+      if (clientData.debt > 0) {
+        throw new Error("This client has an outstanding debt and cannot make new transactions.");
+      }
+      
+      const availableBalance = clientData.periodAllowance - clientData.utilizedAmount;
+      const overage = amount - availableBalance;
+
+      if (overage > 300) {
+        throw new Error(`The resulting debt of KES ${overage.toFixed(2)} exceeds the KES 300.00 limit.`);
+      }
+
+      if (overage > 0 && allowOverage !== 'true') {
+        throw new Error("This transaction requires confirmation for creating new debt. Please try again.");
+      }
+      
+      const newUtilizedAmount = clientData.utilizedAmount + amount;
+      const newDebt = overage > 0 ? overage : 0;
+
+      // --- ALL WRITES LAST ---
+      t.update(clientRef, {
+        utilizedAmount: newUtilizedAmount,
+        debt: newDebt,
+      });
+
+      t.set(newTransactionRef, {
+        clientId: clientId,
+        clientName: clientData.name,
+        partnerId: clientData.partnerId,
+        partnerName: clientData.partnerName,
+        amount: amount,
+        status: 'completed',
+        createdAt: FieldValue.serverTimestamp(),
+        receiptNo: receiptNo,
+      });
     });
-    
-    batch.set(newTransactionRef, {
-      clientId: clientId,
-      clientName: clientData.name,
-      partnerId: clientData.partnerId,
-      partnerName: clientData.partnerName,
-      amount: amount,
-      status: 'completed',
-      createdAt: newTransactionDate,
-      receiptNo: receiptNo,
-    });
-    
-    await batch.commit();
-    
+
+    // --- SUCCESS ---
     revalidatePath(`/dashboard/${hotelId}/transactions`);
     revalidatePath(`/dashboard/${hotelId}/new-transaction`);
     revalidatePath(`/dashboard/${hotelId}/clients`);
     revalidatePath(`/dashboard/${hotelId}/partners`);
+    revalidatePath(`/dashboard/${hotelId}/reports`);
+
     return { errors: null, message: "Transaction recorded successfully!" };
 
   } catch (error: any) {
-    console.error("Transaction Error:", error);
-    return { errors: { _form: [error.message] }, message: "Failed to record transaction." };
+    // --- FAILURE ---
+    console.error("addTransaction failed:", error);
+    return { 
+      errors: { _form: [error.message || 'An unexpected server error occurred.'] },
+      message: "Failed to record transaction." 
+    };
   }
 }
 
