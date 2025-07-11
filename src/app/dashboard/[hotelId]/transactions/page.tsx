@@ -1,53 +1,62 @@
+
 import { db } from '@/lib/firebase-admin';
 import type { Timestamp } from 'firebase-admin/firestore';
-import type { Transaction, Client, Partner } from "@/lib/types";
+import type { Transaction, Client } from "@/lib/types";
 import { TransactionsClient } from './transactions-client';
 import { notFound } from 'next/navigation';
 
-async function getTransactions(hotelId: string): Promise<Transaction[]> {
+async function getTransactions(hotelId: string): Promise<(Omit<Transaction, 'createdAt'> & { createdAt: string })[]> {
     try {
         const transactionsQuery = db
             .collection(`hotels/${hotelId}/transactions`)
             .orderBy('createdAt', 'desc');
         const querySnapshot = await transactionsQuery.get();
-        return querySnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        })) as Transaction[];
+        return querySnapshot.docs.map((doc) => {
+            const data = doc.data() as Transaction;
+            return {
+                ...data,
+                id: doc.id,
+                createdAt: (data.createdAt as Timestamp).toDate().toISOString(),
+            };
+        });
     } catch (error) {
         console.error("Failed to fetch transactions:", error);
         return [];
     }
 }
 
-async function getClients(hotelId: string): Promise<Client[]> {
+async function getActiveClientsForDropdown(hotelId: string) {
     try {
-        const clientsQuery = db.collection(`hotels/${hotelId}/clients`).orderBy('name', 'asc');
-        const querySnapshot = await clientsQuery.get();
-        return querySnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        })) as Client[];
+        const partnersQuery = db.collection(`hotels/${hotelId}/partners`).where('lastPeriodStartedAt', '!=', null);
+        const activePartnersSnapshot = await partnersQuery.get();
+        
+        if (activePartnersSnapshot.empty) {
+            return [];
+        }
+
+        const activePartnerIds = activePartnersSnapshot.docs.map(p => p.id);
+
+        const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', 'in', activePartnerIds);
+        const clientsSnapshot = await clientsQuery.get();
+        
+        return clientsSnapshot.docs.map(doc => {
+            const c = doc.data() as Client;
+            return {
+                id: doc.id, 
+                name: c.name,
+                partnerName: c.partnerName,
+                partnerId: c.partnerId,
+                periodAllowance: Number(c.periodAllowance || 0),
+                utilizedAmount: Number(c.utilizedAmount || 0),
+                debt: Number(c.debt || 0),
+            };
+        });
     } catch (error) {
-        console.error("Failed to fetch clients:", error);
+        console.error("Failed to fetch active clients:", error);
         return [];
     }
 }
 
-async function getPartners(hotelId: string): Promise<Partner[]> {
-    try {
-        const partnersQuery = db.collection(`hotels/${hotelId}/partners`);
-        const querySnapshot = await partnersQuery.get();
-        const partners = querySnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        })) as Partner[];
-        return partners;
-    } catch (error) {
-        console.error("Failed to fetch partners:", error);
-        return [];
-    }
-}
 
 export default async function TransactionsPage({ params }: { params: { hotelId: string } }) {
   await params;
@@ -55,32 +64,10 @@ export default async function TransactionsPage({ params }: { params: { hotelId: 
     notFound();
   }
 
-  const [transactionsData, clientsData, partnersData] = await Promise.all([
+  const [transactions, clientsForDropdown] = await Promise.all([
     getTransactions(params.hotelId),
-    getClients(params.hotelId),
-    getPartners(params.hotelId)
+    getActiveClientsForDropdown(params.hotelId),
   ]);
-
-  const transactions = transactionsData.map(t => ({
-    ...t,
-    createdAt: (t.createdAt as Timestamp).toDate().toISOString(),
-  }));
-
-  const partnersWithActivePeriodIds = partnersData
-    .filter(p => p.lastPeriodStartedAt)
-    .map(p => p.id);
-
-  const clientsForDropdown = clientsData
-    .filter(c => partnersWithActivePeriodIds.includes(c.partnerId))
-    .map(c => ({
-      id: c.id, 
-      name: c.name,
-      partnerName: c.partnerName,
-      partnerId: c.partnerId,
-      periodAllowance: Number(c.periodAllowance || 0),
-      utilizedAmount: Number(c.utilizedAmount || 0),
-      debt: Number(c.debt || 0),
-  }));
 
   return (
     <div className="space-y-8">
