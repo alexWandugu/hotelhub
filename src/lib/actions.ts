@@ -344,7 +344,7 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     const clientSnap = await clientRef.get();
 
     if (!clientSnap.exists) {
-      return { errors: { _form: ["Client not found. They may have been deleted."] }, message: "Failed to record transaction." };
+      throw new Error("Client not found. They may have been deleted.");
     }
     const clientData = clientSnap.data() as Client;
     
@@ -352,28 +352,28 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     const partnerSnap = await partnerRef.get();
     
     if (!partnerSnap.exists) {
-      return { errors: { _form: ["The client's partner company could not be found."] }, message: "Failed to record transaction." };
+      throw new Error("The client's partner company could not be found.");
     }
     const partnerData = partnerSnap.data() as Partner;
 
     // --- Step 2: Pre-Transaction VALIDATIONS ---
     if (!partnerData.lastPeriodStartedAt) {
-      return { errors: { _form: ["The client's partner does not have an active billing period."] }, message: "Failed to record transaction." };
+      throw new Error("The client's partner does not have an active billing period.");
     }
     if (clientData.debt > 0) {
-      return { errors: { _form: ["This client has an outstanding debt and cannot make new transactions."] }, message: "Failed to record transaction." };
+      throw new Error("This client has an outstanding debt and cannot make new transactions.");
     }
     
     const availableBalance = clientData.periodAllowance - clientData.utilizedAmount;
     const overage = amount - availableBalance;
 
     if (overage > 300) {
-      return { errors: { _form: [`The resulting debt of KES ${overage.toFixed(2)} exceeds the KES 300.00 limit.`] }, message: "Failed to record transaction." };
+      throw new Error(`The resulting debt of KES ${overage.toFixed(2)} exceeds the KES 300.00 limit.`);
     }
 
     if (overage > 0 && allowOverage !== 'true') {
-      // This case is a safety net. The client-side should prevent this.
-      return { errors: { _form: ["This transaction requires confirmation for creating new debt. Please try again."] }, message: "Failed to record transaction." };
+      // This case is a safety net. The client-side should prevent this, but we double check.
+       throw new Error("This transaction requires confirmation for creating new debt. Please try again.");
     }
     
     // --- Step 3: Atomic BATCH WRITE ---
@@ -581,3 +581,5 @@ export async function getPartnerPeriodHistory(hotelId: string, partnerId: string
         throw new Error("Failed to fetch period history.");
     }
 }
+
+    
