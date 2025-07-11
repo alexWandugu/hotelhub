@@ -61,6 +61,7 @@ async function getInitialData(hotelId: string): Promise<{
 }
 
 export default async function NewTransactionPage({ params }: { params: { hotelId: string } }) {
+  await params;
   if (!params.hotelId) {
     notFound();
   }

@@ -50,6 +50,7 @@ async function getPartners(hotelId: string): Promise<Partner[]> {
 }
 
 export default async function TransactionsPage({ params }: { params: { hotelId: string } }) {
+  await params;
   if (!params.hotelId) {
     notFound();
   }

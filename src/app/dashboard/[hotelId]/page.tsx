@@ -70,6 +70,7 @@ async function getDashboardData(hotelId: string) {
 
 
 export default async function DashboardPage({ params }: { params: { hotelId: string } }) {
+  await params;
   if (!params.hotelId) {
     notFound();
   }

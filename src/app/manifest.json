@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "short_name": "H Hub",
+  "name": "Hotel Hub",
+  "short_name": "Hotel Hub",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
@@ -15,7 +15,7 @@
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#ebf1f1",
-  "background_color": "#697380",
+  "theme_color": "#3F51B5",
+  "background_color": "#E8EAF6",
   "display": "standalone"
 }
