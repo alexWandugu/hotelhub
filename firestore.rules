@@ -3,6 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
   
+    // --- Reusable Functions ---
     function isUserOfHotel(hotelId) {
       return exists(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid)).data.status == 'active';
@@ -13,41 +14,55 @@ service cloud.firestore {
              get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // --- Path Matching ---
     match /hotels/{hotelId} {
+      // Hotel document can be read by any active user of that hotel.
       allow read: if isUserOfHotel(hotelId);
       
-      // All users can see the user list, but only admins can modify it (see below)
+      // --- Subcollections ---
+      
+      // User Management
       match /users/{userId} {
         allow read: if isUserOfHotel(hotelId);
 
-        // Allow a user to create their own 'pending' request
+        // Allow a user to create their own 'pending' request to join.
         allow create: if request.auth.uid == userId &&
                          request.resource.data.status == 'pending' &&
-                         request.resource.data.role == 'member';
-                         
-        // Allow an admin to update or delete any user
+                         request.resource.data.role == 'member' &&
+                         !exists(path(resource.path)); // Cannot overwrite existing request
+
+        // Allow an admin to update user roles/status or delete users.
         allow update, delete: if isAdminOfHotel(hotelId);
       }
       
+      // Partners & their History
       match /partners/{partnerId} {
         allow read: if isUserOfHotel(hotelId);
-        allow write: if isAdminOfHotel(hotelId);
+        allow write: if isAdminOfHotel(hotelId); // create, update, delete
         
         match /periodHistory/{historyId} {
            allow read: if isUserOfHotel(hotelId);
-           allow write: if isAdminOfHotel(hotelId);
+           allow write: if isAdminOfHotel(hotelId); // create, update, delete
         }
       }
       
+      // Clients
       match /clients/{clientId} {
          allow read: if isUserOfHotel(hotelId);
-         allow write: if isAdminOfHotel(hotelId);
+         allow write: if isAdminOfHotel(hotelId); // create, update, delete
       }
       
+      // Transactions
       match /transactions/{transactionId} {
         allow read: if isUserOfHotel(hotelId);
-        // Only admins can delete transactions, but all authenticated users can create/update (flag)
-        allow create, update: if isUserOfHotel(hotelId);
+        
+        // Members and Admins can create transactions.
+        allow create: if isUserOfHotel(hotelId);
+        
+        // Members and Admins can update a transaction (e.g., to flag it).
+        allow update: if isUserOfHotel(hotelId);
+        
+        // ONLY Admins can delete transactions.
         allow delete: if isAdminOfHotel(hotelId);
       }
     }
