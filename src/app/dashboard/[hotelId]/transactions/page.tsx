@@ -59,7 +59,6 @@ async function getActiveClientsForDropdown(hotelId: string) {
 
 
 export default async function TransactionsPage({ params }: { params: { hotelId: string } }) {
-  await params;
   if (!params.hotelId) {
     notFound();
   }

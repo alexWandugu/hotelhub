@@ -339,7 +339,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
   const { client: clientId, amount, receiptNo, allowOverage } = validatedFields.data;
   
   try {
-    // --- Step 1: Pre-Transaction READS ---
     const clientRef = db.doc(`hotels/${hotelId}/clients/${clientId}`);
     const clientSnap = await clientRef.get();
 
@@ -356,7 +355,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     }
     const partnerData = partnerSnap.data() as Partner;
 
-    // --- Step 2: Pre-Transaction VALIDATIONS ---
     if (!partnerData.lastPeriodStartedAt) {
       throw new Error("The client's partner does not have an active billing period.");
     }
@@ -372,11 +370,9 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     }
 
     if (overage > 0 && allowOverage !== 'true') {
-      // This case is a safety net. The client-side should prevent this, but we double check.
        throw new Error("This transaction requires confirmation for creating new debt. Please try again.");
     }
     
-    // --- Step 3: Atomic BATCH WRITE ---
     const batch = db.batch();
     
     const newUtilizedAmount = clientData.utilizedAmount + amount;
@@ -401,7 +397,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     
     await batch.commit();
 
-    // --- Success ---
     revalidatePath(`/dashboard/${hotelId}/transactions`);
     revalidatePath(`/dashboard/${hotelId}/new-transaction`);
     revalidatePath(`/dashboard/${hotelId}/clients`);
@@ -411,7 +406,6 @@ export async function addTransaction(hotelId: string, prevState: any, formData: 
     return { errors: null, message: "Transaction recorded successfully!" };
 
   } catch (error: any) {
-    // --- Failure ---
     console.error("addTransaction failed:", error);
     return { 
       errors: { _form: [error.message || 'An unexpected server error occurred.'] },
@@ -489,7 +483,6 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
     const partnerRef = db.doc(`hotels/${hotelId}/partners/${partnerId}`);
     const clientsQuery = db.collection(`hotels/${hotelId}/clients`).where('partnerId', '==', partnerId);
     
-    // Perform all reads before the transaction
     const partnerSnap = await partnerRef.get();
     if (!partnerSnap.exists) {
       throw new Error('Partner not found.');
@@ -517,7 +510,6 @@ export async function startNewPeriod(hotelId: string, partnerId: string) {
     const newEndDate = addDays(newStartDate, 30);
     const newPeriodBaseAllowance = totalSharedAmount / sponsoredEmployeesCount;
 
-    // Use a write-only transaction
     const batch = db.batch();
 
     batch.update(partnerRef, { lastPeriodStartedAt: newStartDate });
@@ -581,5 +573,3 @@ export async function getPartnerPeriodHistory(hotelId: string, partnerId: string
         throw new Error("Failed to fetch period history.");
     }
 }
-
-    
